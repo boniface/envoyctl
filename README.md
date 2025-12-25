@@ -203,11 +203,11 @@ sudo cp target/release/envoyctl /usr/local/bin/
 ```bash
 # 1. Add the repository signing key
 sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://your-repo.github.io/envoyctl/public.gpg \
+curl -fsSL https://boniface.github.io/envoyctl/public.gpg \
   | sudo gpg --dearmor -o /etc/apt/keyrings/envoyctl-archive-keyring.gpg
 
 # 2. Add the APT repository
-echo "deb [signed-by=/etc/apt/keyrings/envoyctl-archive-keyring.gpg] https://your-repo.github.io/envoyctl stable main" \
+echo "deb [signed-by=/etc/apt/keyrings/envoyctl-archive-keyring.gpg] https://boniface.github.io/envoyctl stable main" \
   | sudo tee /etc/apt/sources.list.d/envoyctl.list
 
 # 3. Install
@@ -423,7 +423,7 @@ docker run -d \
   -p 80:80 -p 443:443 -p 9901:9901 \
   -v $(pwd)/out/envoy.generated.yaml:/etc/envoy/envoy.yaml:ro \
   -v /etc/envoy/certs:/etc/envoy/certs:ro \
-  envoyproxy/envoy:v1.31-latest
+  envoyproxy/envoy:v1.36.4
 ```
 
 ---
@@ -441,7 +441,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ```bash
 # Clone
-git clone https://github.com/your-username/envoyctl.git
+git clone https://github.com/boniface/envoyctl.git
 cd envoyctl
 
 # Build

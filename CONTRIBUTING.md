@@ -31,12 +31,12 @@ Thank you for your interest in contributing to envoyctl! This document provides 
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/<your-username>/envoyctl.git
+   git clone https://github.com/boniface/envoyctl.git
    cd envoyctl
    ```
 3. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/<original-owner>/envoyctl.git
+   git remote add upstream https://github.com/boniface/envoyctl.git
    ```
 
 ---
@@ -313,5 +313,5 @@ Include:
 
 ---
 
-Thank you for contributing to envoyctl! 🎉
+Thank you for contributing to envoyctl!!
 
