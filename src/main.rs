@@ -13,7 +13,7 @@ use cli::{Cli, Command};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    match cli.cmd {
+    match &cli.cmd {
         Command::Init { dir } => init::cmd_init(&cli, dir),
         Command::Build => apply::cmd_build(&cli),
         Command::Validate => apply::cmd_validate(&cli),

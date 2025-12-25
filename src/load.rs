@@ -48,3 +48,130 @@ fn read_dir_yaml<T: serde::de::DeserializeOwned>(dir: &Path) -> Result<Vec<T>> {
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_read_yaml_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let yaml_file = temp_dir.path().join("test.yaml");
+
+        let yaml_content = r#"
+address: "127.0.0.1"
+port: 9000
+"#;
+        fs::write(&yaml_file, yaml_content).unwrap();
+
+        let result: AdminSpec = read_yaml(yaml_file).unwrap();
+        assert_eq!(result.address, "127.0.0.1");
+        assert_eq!(result.port, 9000);
+    }
+
+    #[test]
+    fn test_read_yaml_file_not_found() {
+        let non_existent_file = PathBuf::from("/non/existent/file.yaml");
+        let result: Result<AdminSpec, _> = read_yaml(non_existent_file);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_dir_yaml_empty_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let yaml_dir = temp_dir.path().join("yaml_dir");
+        fs::create_dir(&yaml_dir).unwrap();
+
+        let result: Result<Vec<AdminSpec>, _> = read_dir_yaml(&yaml_dir);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_read_dir_yaml_with_yaml_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let yaml_dir = temp_dir.path().join("yaml_dir");
+        fs::create_dir(&yaml_dir).unwrap();
+
+        // Create test YAML files
+        fs::write(yaml_dir.join("file1.yaml"), "address: \"127.0.0.1\"\nport: 9000").unwrap();
+        fs::write(yaml_dir.join("file2.yaml"), "address: \"192.168.1.1\"\nport: 8080").unwrap();
+
+        let result: Result<Vec<AdminSpec>, _> = read_dir_yaml(&yaml_dir);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+        assert_eq!(specs.len(), 2);
+
+        // Check that we can access the data
+        assert!(specs.iter().any(|s| s.address == "127.0.0.1" && s.port == 9000));
+        assert!(specs.iter().any(|s| s.address == "192.168.1.1" && s.port == 8080));
+    }
+
+    #[test]
+    fn test_read_dir_yaml_with_mixed_extensions() {
+        let temp_dir = TempDir::new().unwrap();
+        let yaml_dir = temp_dir.path().join("yaml_dir");
+        fs::create_dir(&yaml_dir).unwrap();
+
+        // Create YAML and non-YAML files
+        fs::write(yaml_dir.join("file1.yaml"), "address: \"127.0.0.1\"\nport: 9000").unwrap();
+        fs::write(yaml_dir.join("file2.yml"), "address: \"192.168.1.1\"\nport: 8080").unwrap();
+        fs::write(yaml_dir.join("file3.txt"), "this should be ignored").unwrap();
+        fs::write(yaml_dir.join("file4.json"), "this should be ignored too").unwrap();
+
+        let result: Result<Vec<AdminSpec>, _> = read_dir_yaml(&yaml_dir);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+        assert_eq!(specs.len(), 2); // Only .yaml and .yml files should be processed
+
+        // Check that we can access the data
+        assert!(specs.iter().any(|s| s.address == "127.0.0.1" && s.port == 9000));
+        assert!(specs.iter().any(|s| s.address == "192.168.1.1" && s.port == 8080));
+    }
+
+    #[test]
+    fn test_load_all_with_valid_structure() {
+        // Create a temporary directory structure that mimics the expected config layout
+        let temp_dir = TempDir::new().unwrap();
+        let config_dir = temp_dir.path().join("config");
+        fs::create_dir_all(config_dir.join("common")).unwrap();
+        fs::create_dir_all(config_dir.join("domains")).unwrap();
+        fs::create_dir_all(config_dir.join("upstreams")).unwrap();
+        fs::create_dir_all(config_dir.join("policies")).unwrap();
+
+        // Write common config files
+        fs::write(config_dir.join("common/admin.yaml"), "address: \"0.0.0.0\"\nport: 9901").unwrap();
+        fs::write(config_dir.join("common/defaults.yaml"), "route_timeout: \"60s\"").unwrap();
+        fs::write(config_dir.join("common/access_log.yaml"), "type: \"stdout\"\npath: \"/dev/stdout\"").unwrap();
+        fs::write(config_dir.join("common/runtime.yaml"), r#"validate: {type: "native"}
+restart: {type: "docker_restart", container: "envoy"}
+"#).unwrap();
+
+        // Write policies file
+        fs::write(config_dir.join("policies/ratelimits.yaml"), "").unwrap();
+
+        let result = load_all(&config_dir);
+        assert!(result.is_ok());
+
+        let loaded = result.unwrap();
+        assert_eq!(loaded.admin.address, "0.0.0.0");
+        assert_eq!(loaded.admin.port, 9901);
+        assert_eq!(loaded.defaults.route_timeout, "60s");
+        assert_eq!(loaded.access_log.r#type, "stdout");
+        assert_eq!(loaded.access_log.path, "/dev/stdout");
+        assert_eq!(loaded.domains.len(), 0); // No domain files
+        assert_eq!(loaded.upstreams.len(), 0); // No upstream files
+    }
+
+    #[test]
+    fn test_load_all_missing_common_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_dir = temp_dir.path().join("config");
+        // Don't create the common directory
+
+        let result = load_all(&config_dir);
+        assert!(result.is_err()); // Should fail because common files are missing
+    }
+}

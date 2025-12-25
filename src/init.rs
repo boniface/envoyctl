@@ -1,9 +1,9 @@
 use crate::cli::Cli;
 use anyhow::{Context, Result};
 use fs_extra::dir::{copy as copy_dir, CopyOptions};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-pub fn cmd_init(_cli: &Cli, dir: PathBuf) -> Result<()> {
+pub fn cmd_init(_cli: &Cli, dir: &Path) -> Result<()> {
     // templates/workspace is packaged to /usr/share/envoyctl/templates/workspace
     // For local dev, we also support running from repo root where templates/ exists.
     let candidates = [

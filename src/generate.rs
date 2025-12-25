@@ -418,3 +418,227 @@ fn sanitize_name(domain: &str) -> String {
 fn s<T: Into<String>>(x: T) -> Value { Value::String(x.into()) }
 fn n<T: Into<u64>>(x: T) -> Value { Value::Number(serde_yaml::Number::from(x.into())) }
 fn b(x: bool) -> Value { Value::Bool(x) }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_yaml::Value;
+
+    #[test]
+    fn test_sanitize_name() {
+        assert_eq!(sanitize_name("example.com"), "example_com");
+        assert_eq!(sanitize_name("api-test.example.com"), "api_test_example_com");
+        assert_eq!(sanitize_name("simple"), "simple");
+        assert_eq!(sanitize_name("123.456.789"), "123_456_789");
+    }
+
+    #[test]
+    fn test_socket_addr() {
+        let result = socket_addr("TCP", "127.0.0.1", 8080);
+        match &result {
+            Value::Mapping(m) => {
+                let socket_addr = m.get(&Value::String("socket_address".to_string())).unwrap();
+                match socket_addr {
+                    Value::Mapping(sa) => {
+                        assert_eq!(sa.get(&Value::String("protocol".to_string())).unwrap(), &Value::String("TCP".to_string()));
+                        assert_eq!(sa.get(&Value::String("address".to_string())).unwrap(), &Value::String("127.0.0.1".to_string()));
+                        assert_eq!(sa.get(&Value::String("port_value".to_string())).unwrap(), &Value::Number(8080.into()));
+                    }
+                    _ => panic!("Expected mapping for socket_address"),
+                }
+            }
+            _ => panic!("Expected mapping for address"),
+        }
+    }
+
+    #[test]
+    fn test_generate_envoy_yaml_basic() {
+        // Create a minimal loaded structure
+        let loaded = crate::load::Loaded {
+            admin: AdminSpec {
+                address: "0.0.0.0".to_string(),
+                port: 9901,
+            },
+            defaults: DefaultsSpec {
+                route_timeout: "60s".to_string(),
+                http_default_upstream: "default_http".to_string(),
+                tls_passthrough_upstream: "default_tls".to_string(),
+            },
+            access_log: AccessLogSpec {
+                r#type: "stdout".to_string(),
+                path: "/dev/stdout".to_string(),
+            },
+            runtime: RuntimeSpec {
+                validate: ValidateSpec::Native {},
+                restart: RestartSpec::DockerRestart { container: "envoy".to_string() },
+            },
+            domains: vec![],
+            upstreams: vec![
+                UpstreamSpec {
+                    name: "default_http".to_string(),
+                    connect_timeout: "5s".to_string(),
+                    r#type: "STATIC".to_string(),
+                    lb_policy: "ROUND_ROBIN".to_string(),
+                    http2: false,
+                    endpoints: vec![Endpoint {
+                        address: "127.0.0.1".to_string(),
+                        port: 8080,
+                    }],
+                },
+                UpstreamSpec {
+                    name: "default_tls".to_string(),
+                    connect_timeout: "5s".to_string(),
+                    r#type: "STATIC".to_string(),
+                    lb_policy: "ROUND_ROBIN".to_string(),
+                    http2: false,
+                    endpoints: vec![Endpoint {
+                        address: "127.0.0.1".to_string(),
+                        port: 8443,
+                    }],
+                },
+            ],
+            policies: PoliciesSpec {
+                local_ratelimits: Default::default(),
+            },
+        };
+
+        let result = generate_envoy_yaml(&loaded);
+        assert!(result.is_ok());
+
+        let yaml_value = result.unwrap();
+        match &yaml_value {
+            Value::Mapping(m) => {
+                // Check that we have the expected top-level keys
+                assert!(m.contains_key(&Value::String("admin".to_string())));
+                assert!(m.contains_key(&Value::String("static_resources".to_string())));
+            }
+            _ => panic!("Expected mapping for root"),
+        }
+    }
+
+    #[test]
+    fn test_generate_envoy_yaml_with_domain() {
+        // Create a loaded structure with a domain
+        let loaded = crate::load::Loaded {
+            admin: AdminSpec {
+                address: "0.0.0.0".to_string(),
+                port: 9901,
+            },
+            defaults: DefaultsSpec {
+                route_timeout: "60s".to_string(),
+                http_default_upstream: "default_http".to_string(),
+                tls_passthrough_upstream: "default_tls".to_string(),
+            },
+            access_log: AccessLogSpec {
+                r#type: "stdout".to_string(),
+                path: "/dev/stdout".to_string(),
+            },
+            runtime: RuntimeSpec {
+                validate: ValidateSpec::Native {},
+                restart: RestartSpec::DockerRestart { container: "envoy".to_string() },
+            },
+            domains: vec![
+                DomainSpec {
+                    domain: "example.com".to_string(),
+                    mode: "terminate_https_443".to_string(),
+                    tls: Some(TlsSpec {
+                        cert_chain: "/path/to/cert".to_string(),
+                        private_key: "/path/to/key".to_string(),
+                    }),
+                    routes: vec![
+                        RouteSpec {
+                            m: MatchSpec::Prefix("/api".to_string()),
+                            to_upstream: "api_backend".to_string(),
+                            timeout: Some("30s".to_string()),
+                            per_filter_config: None,
+                        }
+                    ],
+                }
+            ],
+            upstreams: vec![
+                UpstreamSpec {
+                    name: "api_backend".to_string(),
+                    connect_timeout: "5s".to_string(),
+                    r#type: "STATIC".to_string(),
+                    lb_policy: "ROUND_ROBIN".to_string(),
+                    http2: false,
+                    endpoints: vec![Endpoint {
+                        address: "127.0.0.1".to_string(),
+                        port: 8080,
+                    }],
+                },
+                UpstreamSpec {
+                    name: "default_http".to_string(),
+                    connect_timeout: "5s".to_string(),
+                    r#type: "STATIC".to_string(),
+                    lb_policy: "ROUND_ROBIN".to_string(),
+                    http2: false,
+                    endpoints: vec![Endpoint {
+                        address: "127.0.0.1".to_string(),
+                        port: 8080,
+                    }],
+                },
+                UpstreamSpec {
+                    name: "default_tls".to_string(),
+                    connect_timeout: "5s".to_string(),
+                    r#type: "STATIC".to_string(),
+                    lb_policy: "ROUND_ROBIN".to_string(),
+                    http2: false,
+                    endpoints: vec![Endpoint {
+                        address: "127.0.0.1".to_string(),
+                        port: 8443,
+                    }],
+                },
+            ],
+            policies: PoliciesSpec {
+                local_ratelimits: Default::default(),
+            },
+        };
+
+        let result = generate_envoy_yaml(&loaded);
+        assert!(result.is_ok());
+
+        let yaml_value = result.unwrap();
+        match &yaml_value {
+            Value::Mapping(m) => {
+                // Check that we have the expected top-level keys
+                assert!(m.contains_key(&Value::String("admin".to_string())));
+                assert!(m.contains_key(&Value::String("static_resources".to_string())));
+
+                // Check static_resources structure
+                let static_resources = m.get(&Value::String("static_resources".to_string())).unwrap();
+                match static_resources {
+                    Value::Mapping(sr) => {
+                        assert!(sr.contains_key(&Value::String("listeners".to_string())));
+                        assert!(sr.contains_key(&Value::String("clusters".to_string())));
+                    }
+                    _ => panic!("Expected mapping for static_resources"),
+                }
+            }
+            _ => panic!("Expected mapping for root"),
+        }
+    }
+
+    #[test]
+    fn test_match_to_value() {
+        // Test prefix match
+        let prefix_match = MatchSpec::Prefix("/api".to_string());
+        let result = match_to_value(&prefix_match);
+        match &result {
+            Value::Mapping(m) => {
+                assert_eq!(m.get(&Value::String("prefix".to_string())).unwrap(), &Value::String("/api".to_string()));
+            }
+            _ => panic!("Expected mapping for match"),
+        }
+
+        // Test path match
+        let path_match = MatchSpec::Path("/exact/path".to_string());
+        let result = match_to_value(&path_match);
+        match &result {
+            Value::Mapping(m) => {
+                assert_eq!(m.get(&Value::String("path".to_string())).unwrap(), &Value::String("/exact/path".to_string()));
+            }
+            _ => panic!("Expected mapping for match"),
+        }
+    }
+}

@@ -3,7 +3,7 @@
 This directory contains **configuration fragments** that are compiled into
 a complete Envoy configuration by `envoyctl`.
 
-## ✏️ Edit These
+##  Edit These
 
 ```
 config/
@@ -13,7 +13,7 @@ config/
 └── policies/         # Rate limits, headers, retries, timeouts
 ```
 
-## 🚫 Don't Edit These
+## Don't Edit These
 
 ```
 out/

@@ -1,0 +1,13 @@
+envoyctl installs a systemd service/timer that runs envoyctl apply.
+
+Configuration:
+  /etc/default/envoyctl
+
+Workspace:
+  /var/lib/envoyctl/work
+
+To run once:
+  systemctl start envoyctl-apply.service
+
+To enable periodic apply:
+  systemctl enable --now envoyctl-apply.timer

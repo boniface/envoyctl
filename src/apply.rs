@@ -98,3 +98,165 @@ fn restart_envoy(restart: &RestartSpec) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::Cli;
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_atomic_install() {
+        let temp_dir = TempDir::new().unwrap();
+        let src_path = temp_dir.path().join("source.yaml");
+        let dst_path = temp_dir.path().join("destination.yaml");
+
+        // Create source file
+        fs::write(&src_path, "test content").unwrap();
+
+        // Perform atomic install
+        let result = atomic_install(&src_path, &dst_path);
+        assert!(result.is_ok());
+
+        // Verify destination file exists and has correct content
+        assert!(dst_path.exists());
+        let content = fs::read_to_string(&dst_path).unwrap();
+        assert_eq!(content, "test content");
+    }
+
+    #[test]
+    fn test_atomic_install_dst_dir_created() {
+        let temp_dir = TempDir::new().unwrap();
+        let src_path = temp_dir.path().join("source.yaml");
+        let dst_dir = temp_dir.path().join("subdir");
+        let dst_path = dst_dir.join("destination.yaml");
+
+        // Create source file but not destination directory
+        fs::write(&src_path, "test content").unwrap();
+
+        // Perform atomic install - should create dst directory
+        let result = atomic_install(&src_path, &dst_path);
+        assert!(result.is_ok());
+
+        // Verify destination file exists in created subdirectory
+        assert!(dst_path.exists());
+        let content = fs::read_to_string(&dst_path).unwrap();
+        assert_eq!(content, "test content");
+    }
+
+    #[test]
+    fn test_cmd_build_success() {
+        // Create a temporary config directory structure
+        let temp_dir = TempDir::new().unwrap();
+        let config_dir = temp_dir.path().join("config");
+        let out_dir = temp_dir.path().join("out");
+
+        // Create necessary directory structure
+        fs::create_dir_all(config_dir.join("common")).unwrap();
+        fs::create_dir_all(config_dir.join("domains")).unwrap();
+        fs::create_dir_all(config_dir.join("upstreams")).unwrap();
+        fs::create_dir_all(config_dir.join("policies")).unwrap();
+
+        // Create common config files
+        fs::write(config_dir.join("common/admin.yaml"), "address: \"0.0.0.0\"\nport: 9901").unwrap();
+        fs::write(config_dir.join("common/defaults.yaml"), "route_timeout: \"60s\"\nhttp_default_upstream: \"default_backend\"\ntls_passthrough_upstream: \"default_tls\"").unwrap();
+        fs::write(config_dir.join("common/access_log.yaml"), "type: \"stdout\"\npath: \"/dev/stdout\"").unwrap();
+        fs::write(config_dir.join("common/runtime.yaml"), r#"validate: {type: "native"}
+restart: {type: "docker_restart", container: "envoy"}
+"#).unwrap();
+
+        // Create policies file
+        fs::write(config_dir.join("policies/ratelimits.yaml"), "").unwrap();
+
+        // Create a default backend upstream (required by defaults)
+        fs::write(config_dir.join("upstreams/default_backend.yaml"), r#"
+name: "default_backend"
+connect_timeout: "5s"
+type: "STATIC"
+lb_policy: "ROUND_ROBIN"
+endpoints:
+  - address: "127.0.0.1"
+    port: 8080
+"#).unwrap();
+
+        // Create a default TLS backend upstream (required by defaults)
+        fs::write(config_dir.join("upstreams/default_tls.yaml"), r#"
+name: "default_tls"
+connect_timeout: "5s"
+type: "STATIC"
+lb_policy: "ROUND_ROBIN"
+endpoints:
+  - address: "127.0.0.1"
+    port: 8443
+"#).unwrap();
+
+        // Create CLI instance
+        let cli = Cli {
+            config_dir,
+            out_dir,
+            install_path: PathBuf::from("/tmp/test.yaml"),
+            envoy_bin: None,
+            cmd: crate::cli::Command::Build,
+        };
+
+        // Test cmd_build - this should create the output file
+        let result = cmd_build(&cli);
+        assert!(result.is_ok());
+
+        // Verify output file was created
+        let out_path = cli.out_dir.join("envoy.generated.yaml");
+        assert!(out_path.exists());
+    }
+
+    #[test]
+    fn test_cmd_validate_with_invalid_config() {
+        // Create a temporary config directory structure with invalid config
+        let temp_dir = TempDir::new().unwrap();
+        let config_dir = temp_dir.path().join("config");
+        let out_dir = temp_dir.path().join("out");
+
+        // Create necessary directory structure
+        fs::create_dir_all(config_dir.join("common")).unwrap();
+        fs::create_dir_all(config_dir.join("domains")).unwrap();
+        fs::create_dir_all(config_dir.join("upstreams")).unwrap();
+        fs::create_dir_all(config_dir.join("policies")).unwrap();
+
+        // Create common config files
+        fs::write(config_dir.join("common/admin.yaml"), "address: \"0.0.0.0\"\nport: 9901").unwrap();
+        fs::write(config_dir.join("common/defaults.yaml"), "route_timeout: \"60s\"").unwrap();
+        fs::write(config_dir.join("common/access_log.yaml"), "type: \"stdout\"\npath: \"/dev/stdout\"").unwrap();
+        fs::write(config_dir.join("common/runtime.yaml"), r#"validate: {type: "native"}
+restart: {type: "docker_restart", container: "envoy"}
+"#).unwrap();
+
+        // Create policies file
+        fs::write(config_dir.join("policies/ratelimits.yaml"), "").unwrap();
+
+        // Create a domain that references a non-existent upstream (invalid)
+        fs::write(config_dir.join("domains/test.yaml"), r#"
+domain: "example.com"
+mode: "terminate_https_443"
+tls:
+  cert_chain: "/path/to/cert"
+  private_key: "/path/to/key"
+routes:
+  - match: { prefix: "/api" }
+    to_upstream: "nonexistent_backend"  # This doesn't exist
+"#).unwrap();
+
+        // Create CLI instance
+        let cli = Cli {
+            config_dir,
+            out_dir,
+            install_path: PathBuf::from("/tmp/test.yaml"),
+            envoy_bin: None,
+            cmd: crate::cli::Command::Validate,
+        };
+
+        // Test cmd_validate - this should fail during validation
+        let result = cmd_validate(&cli);
+        assert!(result.is_err());
+    }
+}

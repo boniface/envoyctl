@@ -120,7 +120,7 @@ pub struct PerFilterConfigRef {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all="snake_case")]
+#[serde(untagged)]
 pub enum MatchSpec {
     Prefix(String),
     Path(String),
@@ -137,4 +137,174 @@ pub struct TokenBucket {
     pub max_tokens: u32,
     pub tokens_per_fill: u32,
     pub fill_interval: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_yaml;
+
+    #[test]
+    fn test_deserialize_admin_spec() {
+        let yaml = r#"
+address: "127.0.0.1"
+port: 9000
+"#;
+        let admin: AdminSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(admin.address, "127.0.0.1");
+        assert_eq!(admin.port, 9000);
+    }
+
+    #[test]
+    fn test_deserialize_admin_spec_with_defaults() {
+        let yaml = "{}";
+        let admin: AdminSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(admin.address, "0.0.0.0"); // default
+        assert_eq!(admin.port, 9901); // default
+    }
+
+    #[test]
+    fn test_deserialize_defaults_spec() {
+        let yaml = r#"
+route_timeout: "30s"
+http_default_upstream: "my_http"
+tls_passthrough_upstream: "my_tls"
+"#;
+        let defaults: DefaultsSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(defaults.route_timeout, "30s");
+        assert_eq!(defaults.http_default_upstream, "my_http");
+        assert_eq!(defaults.tls_passthrough_upstream, "my_tls");
+    }
+
+    #[test]
+    fn test_deserialize_defaults_spec_with_defaults() {
+        let yaml = "{}";
+        let defaults: DefaultsSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(defaults.route_timeout, "60s"); // default
+        assert_eq!(defaults.http_default_upstream, "cilium_http"); // default
+        assert_eq!(defaults.tls_passthrough_upstream, "cilium_tls"); // default
+    }
+
+    #[test]
+    fn test_deserialize_upstream_spec() {
+        let yaml = r#"
+name: "my_upstream"
+connect_timeout: "10s"
+type: "STATIC"
+lb_policy: "ROUND_ROBIN"
+http2: true
+endpoints:
+  - address: "127.0.0.1"
+    port: 8080
+  - address: "127.0.0.1"
+    port: 8081
+"#;
+        let upstream: UpstreamSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(upstream.name, "my_upstream");
+        assert_eq!(upstream.connect_timeout, "10s");
+        assert_eq!(upstream.r#type, "STATIC");
+        assert_eq!(upstream.lb_policy, "ROUND_ROBIN");
+        assert!(upstream.http2);
+        assert_eq!(upstream.endpoints.len(), 2);
+        assert_eq!(upstream.endpoints[0].address, "127.0.0.1");
+        assert_eq!(upstream.endpoints[0].port, 8080);
+        assert_eq!(upstream.endpoints[1].address, "127.0.0.1");
+        assert_eq!(upstream.endpoints[1].port, 8081);
+    }
+
+    #[test]
+    fn test_deserialize_upstream_spec_with_defaults() {
+        let yaml = r#"
+name: "my_upstream"
+endpoints:
+  - address: "127.0.0.1"
+    port: 8080
+"#;
+        let upstream: UpstreamSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(upstream.connect_timeout, "5s"); // default
+        assert_eq!(upstream.r#type, "STRICT_DNS"); // default
+        assert_eq!(upstream.lb_policy, "ROUND_ROBIN"); // default
+        assert!(!upstream.http2); // default
+    }
+
+    #[test]
+    fn test_deserialize_domain_spec() {
+        let yaml = r#"
+domain: "example.com"
+mode: "terminate_https_443"
+tls:
+  cert_chain: "/path/to/cert"
+  private_key: "/path/to/key"
+routes:
+  - match: "/api"
+    to_upstream: "api_backend"
+    timeout: "30s"
+"#;
+        let domain: DomainSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(domain.domain, "example.com");
+        assert_eq!(domain.mode, "terminate_https_443");
+        assert!(domain.tls.is_some());
+        assert_eq!(domain.routes.len(), 1);
+        assert_eq!(domain.routes[0].to_upstream, "api_backend");
+        assert_eq!(domain.routes[0].timeout, Some("30s".to_string()));
+    }
+
+    #[test]
+    fn test_deserialize_domain_spec_with_defaults() {
+        let yaml = r#"
+domain: "example.com"
+routes: []
+"#;
+        let domain: DomainSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(domain.mode, "terminate_https_443"); // default
+        assert!(domain.tls.is_none());
+        assert_eq!(domain.routes.len(), 0);
+    }
+
+    #[test]
+    fn test_deserialize_route_spec_with_per_filter_config() {
+        let yaml = r#"
+match: "/api"
+to_upstream: "api_backend"
+timeout: "30s"
+per_filter_config:
+  local_ratelimit: "strict"
+"#;
+        let route: RouteSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(route.to_upstream, "api_backend");
+        assert_eq!(route.timeout, Some("30s".to_string()));
+        assert!(route.per_filter_config.is_some());
+        assert_eq!(route.per_filter_config.as_ref().unwrap().local_ratelimit, Some("strict".to_string()));
+    }
+
+    #[test]
+    fn test_deserialize_policies_spec() {
+        let yaml = r#"
+local_ratelimits:
+  strict:
+    max_tokens: 100
+    tokens_per_fill: 100
+    fill_interval: "1s"
+  moderate:
+    max_tokens: 50
+    tokens_per_fill: 50
+    fill_interval: "1s"
+"#;
+        let policies: PoliciesSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(policies.local_ratelimits.len(), 2);
+        assert!(policies.local_ratelimits.contains_key("strict"));
+        assert!(policies.local_ratelimits.contains_key("moderate"));
+
+        let strict = policies.local_ratelimits.get("strict").unwrap();
+        assert_eq!(strict.max_tokens, 100);
+        assert_eq!(strict.tokens_per_fill, 100);
+        assert_eq!(strict.fill_interval, "1s");
+    }
+
+    #[test]
+    fn test_deserialize_policies_spec_empty() {
+        let yaml = "{}";
+        let policies: PoliciesSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(policies.local_ratelimits.len(), 0);
+    }
 }
