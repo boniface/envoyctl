@@ -1,0 +1,52 @@
+# =============================================================================
+# Retry Policies
+# =============================================================================
+# Reusable retry configurations for handling transient failures.
+# Reference these in domain routes to add resilience.
+#
+# WARNING: Only use retries for idempotent operations!
+# Retrying non-idempotent requests (POST, etc.) can cause duplicate actions.
+
+retries:
+  # -------------------------------------------------------------------------
+  # No retries - for non-idempotent requests
+  # -------------------------------------------------------------------------
+  # Use for POST/PUT/DELETE where retrying could cause side effects.
+  none:
+    retry_on: []      # Empty list = no retries
+    num_retries: 0
+
+  # -------------------------------------------------------------------------
+  # Safe idempotent - conservative retry policy
+  # -------------------------------------------------------------------------
+  # Safe for GET requests and idempotent operations.
+  safe_idempotent:
+    # Conditions that trigger a retry:
+    retry_on:
+      - 5xx              # Server errors (500, 502, 503, etc.)
+      - connect-failure  # Failed to connect to upstream
+      - refused-stream   # HTTP/2 stream was refused
+      # Other options:
+      # - reset          # Connection was reset
+      # - retriable-4xx  # Retriable 4xx errors (409 Conflict)
+      # - gateway-error  # 502, 503, 504 only
+
+    num_retries: 2       # Maximum retry attempts
+    per_try_timeout: 2s  # Timeout for each attempt
+
+    # Optional backoff configuration:
+    # retry_back_off:
+    #   base_interval: 100ms
+    #   max_interval: 1s
+
+  # -------------------------------------------------------------------------
+  # Aggressive - for highly available services
+  # -------------------------------------------------------------------------
+  # aggressive:
+  #   retry_on:
+  #     - 5xx
+  #     - connect-failure
+  #     - refused-stream
+  #     - reset
+  #   num_retries: 5
+  #   per_try_timeout: 5s

@@ -1,0 +1,19 @@
+# =============================================================================
+# Global Defaults
+# =============================================================================
+# These values are applied to all routes and listeners unless overridden.
+
+# Default timeout for route requests.
+# Can be overridden per-route in domain configuration.
+# Format: duration (e.g., 30s, 5m, 1h)
+route_timeout: 60s
+
+# Default upstream cluster for HTTP traffic on port 80.
+# Requests that don't match any specific domain route will go here.
+# This upstream is defined in common/default_http_backend.yaml
+http_default_upstream: default_http_backend
+
+# Default upstream cluster for TLS passthrough traffic.
+# Used when mode is 'passthrough_443' or for unknown SNI hosts.
+# This upstream is defined in common/default_tls_backend.yaml
+tls_passthrough_upstream: default_tls_backend

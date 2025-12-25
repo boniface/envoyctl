@@ -1,0 +1,31 @@
+# =============================================================================
+# Timeout Policies
+# =============================================================================
+# Named timeout values for consistent configuration across routes.
+# Reference these in domain routes: timeout: short (uses 5s)
+#
+# Timeout guidelines:
+#   - short:   Health checks, quick lookups, cache hits
+#   - medium:  API calls, database queries
+#   - default: General web requests
+#   - long:    File uploads, report generation
+#   - streaming: Long-lived connections (WebSocket, SSE)
+
+timeouts:
+  # Standard timeout for most requests
+  default: 60s
+
+  # Quick operations - fail fast if slow
+  short: 5s
+
+  # Moderate operations - API calls with some processing
+  medium: 30s
+
+  # Long operations - file uploads, complex queries
+  long: 120s
+
+  # Streaming/WebSocket connections (uncomment if needed)
+  # streaming: 3600s  # 1 hour
+
+  # Ultra-short for health checks (uncomment if needed)
+  # health: 1s

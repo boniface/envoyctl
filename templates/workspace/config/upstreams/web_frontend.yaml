@@ -1,0 +1,42 @@
+# =============================================================================
+# Upstream Configuration: web_frontend
+# =============================================================================
+# Backend cluster for your web frontend service.
+# Typically serves HTML, CSS, JavaScript, and static assets.
+#
+# Common frontend frameworks:
+#   - React, Vue, Angular (usually served via nginx or node)
+#   - Next.js, Nuxt.js (Node.js server)
+#   - Static site generators (served via nginx, caddy, etc.)
+
+# Unique upstream name - referenced by domains in route definitions.
+name: web_frontend
+
+# Connection timeout to the backend.
+connect_timeout: 2s
+
+# Service discovery type.
+# STRICT_DNS: Resolve hostname and use all returned IP addresses.
+type: STRICT_DNS
+
+# Load balancing algorithm.
+# ROUND_ROBIN: Distribute requests evenly across all endpoints.
+lb_policy: ROUND_ROBIN
+
+# HTTP/2 configuration.
+# Most frontend servers use HTTP/1.1, so this is disabled by default.
+# Set 'http2: true' if your frontend server supports HTTP/2.
+http2: false
+
+# Backend server(s) - replace with your actual frontend service.
+#
+# Examples:
+#   Docker Compose: { address: "frontend", port: 3000 }
+#   nginx container: { address: "nginx", port: 80 }
+#   Kubernetes: { address: "frontend.default.svc", port: 80 }
+#   Local dev: { address: "localhost", port: 3000 }
+endpoints:
+  - { address: "localhost", port: 8080 }
+  # Add more for load balancing:
+  # - { address: "frontend-2", port: 8080 }
+

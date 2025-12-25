@@ -1,0 +1,35 @@
+# =============================================================================
+# Default HTTP Backend
+# =============================================================================
+# This upstream handles HTTP traffic (port 80) that doesn't match any
+# specific domain configuration. It serves as a fallback/catch-all.
+#
+# Common use cases:
+#   - Redirect HTTP to HTTPS
+#   - Serve a default landing page
+#   - Route to a shared backend service
+#
+# Referenced by: common/defaults.yaml -> http_default_upstream
+
+# Unique name for this upstream (must match defaults.yaml reference)
+name: default_http_backend
+
+# Connection timeout to backend hosts
+connect_timeout: 5s
+
+# Service discovery type (STATIC, STRICT_DNS, LOGICAL_DNS, EDS)
+type: STRICT_DNS
+
+# Load balancing algorithm
+lb_policy: ROUND_ROBIN
+
+# Backend endpoints - replace with your actual servers
+# Examples:
+#   - Docker service names: { address: "nginx", port: 80 }
+#   - Kubernetes services: { address: "web-service.default.svc", port: 80 }
+#   - Static IPs: { address: "10.0.0.10", port: 80 }
+endpoints:
+  - { address: "localhost", port: 8080 }
+  # Add more endpoints for load balancing:
+  # - { address: "backend-2", port: 8080 }
+  # - { address: "backend-3", port: 8080 }

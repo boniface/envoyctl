@@ -1,0 +1,92 @@
+# =============================================================================
+    timeout: 60s
+    to_upstream: web_frontend
+  - match: { prefix: "/" }
+  # IMPORTANT: This should always be the last route!
+  # Handles all requests that don't match above routes.
+  # -------------------------------------------------------------------------
+  # Route 5: Catch-all - Default route
+  # -------------------------------------------------------------------------
+
+  #     local_ratelimit: strict  # Reference to policies/ratelimits.yaml
+  #   per_filter_config:
+  #   timeout: 30s
+  #   to_upstream: api_backend
+  # - match: { path: "/login" }
+  # Uncomment to enable:
+  # Sensitive endpoints can have rate limiting applied.
+  # -------------------------------------------------------------------------
+  # Route 4: Rate-limited endpoint example
+  # -------------------------------------------------------------------------
+
+    timeout: 30s
+    to_upstream: web_frontend    # Defined in upstreams/web_frontend.yaml
+  - match: { prefix: "/static/" }
+  # Route static files to the web frontend with longer caching.
+  # -------------------------------------------------------------------------
+  # Route 3: Static assets
+  # -------------------------------------------------------------------------
+
+    timeout: 5s                  # Quick timeout for health checks
+    to_upstream: api_backend
+  - match: { path: "/health" }
+  # Expose a health endpoint for load balancers and monitoring.
+  # -------------------------------------------------------------------------
+  # Route 2: Health check endpoint
+  # -------------------------------------------------------------------------
+
+    timeout: 30s                 # Shorter timeout for API calls
+    to_upstream: api_backend     # Defined in upstreams/api_backend.yaml
+  - match: { prefix: "/api/" }
+  # Route all API traffic to the API backend service.
+  # -------------------------------------------------------------------------
+  # Route 1: API endpoints
+  # -------------------------------------------------------------------------
+routes:
+#   - regex: "^/v[0-9]+/" - Matches regex pattern
+#   - path: "/health"     - Matches exact path /health
+#   - prefix: "/api/"     - Matches paths starting with /api/
+# Match types:
+#
+# Always put more specific routes before catch-all routes.
+# Routes are evaluated in order - first match wins.
+# -----------------------------------------------------------------------------
+# Route Definitions
+# -----------------------------------------------------------------------------
+
+  private_key: /etc/envoy/certs/example.com/privkey.pem
+  # Must match the certificate in cert_chain.
+  # Path to the private key file (privkey.pem)
+
+  cert_chain: /etc/envoy/certs/example.com/fullchain.pem
+  # Should contain the server certificate followed by intermediate certificates.
+  # Path to the certificate chain file (fullchain.pem)
+tls:
+#   - Kubernetes secrets: Mount to a known path
+#   - Custom certs: /etc/envoy/certs/<domain>/
+#   - Let's Encrypt: /etc/letsencrypt/live/<domain>/
+# Certificate sources:
+#
+# Envoy will use these certificates to terminate TLS connections.
+# TLS certificate configuration (required when mode is terminate_https_443)
+
+mode: terminate_https_443
+#   - http_80: Plain HTTP on port 80 (no TLS)
+#   - passthrough_443: Pass TLS traffic through unchanged (SNI-based routing)
+#   - terminate_https_443: Terminate TLS at Envoy, serve HTTPS on port 443
+# Routing mode - how Envoy handles traffic for this domain:
+
+domain: example.com
+# Envoy will match incoming requests against this domain.
+# The fully qualified domain name (FQDN) this config handles.
+
+#   - app.mycompany.io.yaml
+#   - api.example.com.yaml
+#   - example.com.yaml
+# File naming convention: <domain-name>.yaml
+#
+# Copy this file and rename it to match your domain: <your-domain>.yaml
+# This file defines routing rules for a single domain.
+# =============================================================================
+# Domain Configuration: example.com
+

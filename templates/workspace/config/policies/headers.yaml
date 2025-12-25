@@ -1,0 +1,56 @@
+# =============================================================================
+# Header Policies
+# =============================================================================
+# Reusable header manipulation rules for requests and responses.
+# Reference these policies in domain routes to add/remove/modify headers.
+
+# -----------------------------------------------------------------------------
+# Request Header Policies
+# -----------------------------------------------------------------------------
+# Applied to requests before they are sent to upstream backends.
+request_headers:
+  # Policy: Add X-Forwarded-Proto header
+  # Use this to tell backends that the original request was HTTPS.
+  add_forwarded_proto_https:
+    add:
+      - key: x-forwarded-proto
+        value: https
+        append: false  # Replace existing header if present
+
+  # Policy: Add or preserve request ID for tracing
+  # Uses Envoy's variable substitution to preserve existing ID or generate new.
+  add_request_id:
+    add:
+      - key: x-request-id
+        value: "%REQ(X-REQUEST-ID)%"  # Envoy variable: original request header
+        append: false
+
+# -----------------------------------------------------------------------------
+# Response Header Policies
+# -----------------------------------------------------------------------------
+# Applied to responses before they are sent to clients.
+response_headers:
+  # Policy: Add security headers
+  # These headers help protect against common web vulnerabilities.
+  security_headers:
+    add:
+      # Prevent MIME type sniffing attacks
+      - key: x-content-type-options
+        value: nosniff
+
+      # Prevent clickjacking by disallowing iframes
+      - key: x-frame-options
+        value: DENY
+
+      # Enable browser XSS protection
+      - key: x-xss-protection
+        value: "1; mode=block"
+
+      # Uncomment to add HSTS (HTTP Strict Transport Security):
+      # - key: strict-transport-security
+      #   value: "max-age=31536000; includeSubDomains"
+
+    # Headers to remove from responses (optional):
+    # remove:
+    #   - server           # Hide server software
+    #   - x-powered-by     # Hide framework info

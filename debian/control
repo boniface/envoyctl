@@ -1,0 +1,14 @@
+Source: envoyctl
+Section: admin
+Priority: optional
+Maintainer: You <you@example.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/your-org/envoyctl
+
+Package: envoyctl
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, docker.io | docker-ce, ca-certificates
+Description: Generate and manage Envoy config from small fragments
+ A small tool that compiles manageable YAML fragments into a full Envoy config,
+ validates it using Envoy, and applies it safely.

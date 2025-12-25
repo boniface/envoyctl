@@ -1,0 +1,19 @@
+# =============================================================================
+# Envoy Admin Interface Configuration
+# =============================================================================
+# The admin interface provides stats, config dumps, and runtime control.
+# WARNING: Exposing this publicly is a security risk!
+
+# Bind address for the admin interface.
+# Use 127.0.0.1 for local access only (recommended for production).
+# Use 0.0.0.0 to allow remote access (use with firewall rules).
+address: 0.0.0.0
+
+# Port number for the admin interface.
+# Access at: http://<address>:<port>/
+# Useful endpoints:
+#   /stats          - Prometheus metrics
+#   /config_dump    - Current configuration
+#   /clusters       - Cluster health status
+#   /ready          - Readiness check
+port: 9901

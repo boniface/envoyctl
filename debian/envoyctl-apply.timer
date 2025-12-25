@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodically apply Envoy configuration using envoyctl
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=envoyctl-apply.service
+
+[Install]
+WantedBy=timers.target

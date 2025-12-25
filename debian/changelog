@@ -1,0 +1,8 @@
+envoyctl (0.1.0) unstable; urgency=medium
+
+  * Initial release.
+  * Generate Envoy v3 configuration from small YAML fragments.
+  * Validate configuration using Envoy before applying.
+  * Ship systemd service and timer for automatic application.
+
+ -- Boniface kabaso <boniface@hashcode.zm>  Thu, 25 Sep 2025 12:00:00 +0000

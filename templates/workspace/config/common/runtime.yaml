@@ -1,0 +1,42 @@
+# =============================================================================
+# Runtime Configuration
+# =============================================================================
+# Controls how envoyctl validates and restarts Envoy.
+
+# -----------------------------------------------------------------------------
+# Validation Settings
+# -----------------------------------------------------------------------------
+# How to run 'envoy --mode validate' to check generated config.
+validate:
+  # Validation type:
+  #   - docker_image: Run Envoy in a Docker container (recommended)
+  #   - native: Use locally installed Envoy binary
+  type: docker_image
+
+  # Docker image to use for validation.
+  # Use the same version as your production Envoy for consistency.
+  # See: https://hub.docker.com/r/envoyproxy/envoy/tags
+  image: envoyproxy/envoy:v1.31-latest
+
+  # For native validation (when type: native), specify the binary path:
+  # bin: /usr/bin/envoy
+
+# -----------------------------------------------------------------------------
+# Restart Settings
+# -----------------------------------------------------------------------------
+# How to restart Envoy after applying new configuration.
+restart:
+  # Restart type:
+  #   - docker_compose: Use 'docker-compose restart'
+  #   - systemd: Use 'systemctl restart'
+  #   - none: Don't restart (manual reload)
+  type: docker_compose
+
+  # Docker Compose service name (when type: docker_compose)
+  service: envoy
+
+  # Path to docker-compose.yml file
+  file: /opt/envoy/docker-compose.yml
+
+  # For systemd (when type: systemd), specify the unit name:
+  # unit: envoy.service

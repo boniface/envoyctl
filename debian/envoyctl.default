@@ -1,0 +1,13 @@
+# Where the envoyctl workspace lives (created by `envoyctl init`)
+ENVOYCTL_WORKDIR=/var/lib/envoyctl/work
+
+# Fragment directories (relative to workdir or absolute; choose one style)
+ENVOYCTL_CONFIG_DIR=/var/lib/envoyctl/work/config
+ENVOYCTL_OUT_DIR=/var/lib/envoyctl/work/out
+
+# Where Envoy reads config (host path)
+ENVOYCTL_INSTALL_PATH=/etc/envoy/envoy.yaml
+ENVOYCTL_INSTALL_DIR=/etc/envoy
+
+# Optional: validate with native Envoy binary
+# ENVOYCTL_ENVOY_BIN=/usr/bin/envoy

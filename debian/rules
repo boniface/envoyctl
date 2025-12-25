@@ -1,0 +1,25 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --with systemd
+
+override_dh_auto_build:
+	cargo build --release
+
+override_dh_auto_install:
+	# copy files into debian/envoyctl/... (package staging directory)
+	install -D -m 0755 target/release/envoyctl \
+	  debian/envoyctl/usr/bin/envoyctl
+
+	mkdir -p debian/envoyctl/usr/share/envoyctl/templates
+	cp -a templates/workspace \
+	  debian/envoyctl/usr/share/envoyctl/templates/
+
+	install -D -m 0644 debian/envoyctl.default \
+	  debian/envoyctl/etc/default/envoyctl
+
+	install -D -m 0644 debian/envoyctl-apply.service \
+	  debian/envoyctl/lib/systemd/system/envoyctl-apply.service
+
+	install -D -m 0644 debian/envoyctl-apply.timer \
+	  debian/envoyctl/lib/systemd/system/envoyctl-apply.timer

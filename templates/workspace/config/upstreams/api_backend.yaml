@@ -1,0 +1,60 @@
+# =============================================================================
+# Upstream Configuration: api_backend
+# =============================================================================
+# Backend cluster for your API service.
+# This is a common pattern for microservices architectures.
+#
+# Copy this file to create additional upstreams for your services.
+# File naming convention: <upstream-name>.yaml
+
+# Unique name for this upstream.
+# Referenced by domains via 'to_upstream' in route definitions.
+name: api_backend
+
+# Connection timeout - how long Envoy waits to establish a connection.
+# Should be short to fail fast; use retries for resilience.
+connect_timeout: 2s
+
+# Service discovery type:
+#   - STATIC: Use static IP addresses (no DNS resolution)
+#   - STRICT_DNS: Resolve DNS and use ALL returned addresses
+#   - LOGICAL_DNS: Resolve DNS and use only the first address
+#   - EDS: Use Envoy's Endpoint Discovery Service (xDS)
+type: STRICT_DNS
+
+# Load balancing policy:
+#   - ROUND_ROBIN: Rotate through endpoints equally
+#   - LEAST_REQUEST: Send to endpoint with fewest active requests
+#   - RANDOM: Random selection
+#   - RING_HASH: Consistent hashing (for sticky sessions)
+#   - MAGLEV: Consistent hashing with better distribution
+lb_policy: ROUND_ROBIN
+
+# Enable HTTP/2 for upstream connections.
+# Set to true if your backend supports HTTP/2 (e.g., gRPC services).
+# This enables multiplexing and can improve performance.
+http2: false
+
+# Backend endpoints - list of servers to route traffic to.
+# Replace these with your actual backend addresses.
+#
+# Examples for different environments:
+#   Docker Compose: { address: "api-service", port: 8080 }
+#   Kubernetes: { address: "api-service.default.svc.cluster.local", port: 8080 }
+#   Static IPs: { address: "10.0.1.10", port: 8080 }
+endpoints:
+  - { address: "localhost", port: 3000 }
+  # Add more endpoints for load balancing and high availability:
+  # - { address: "api-2", port: 3000 }
+  # - { address: "api-3", port: 3000 }
+
+# Optional: Health check configuration (uncomment to enable)
+# health_check:
+#   timeout: 5s
+#   interval: 10s
+#   unhealthy_threshold: 3
+#   healthy_threshold: 2
+#   http:
+#     path: /health
+#     expected_statuses: [200]
+

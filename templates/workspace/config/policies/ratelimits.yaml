@@ -1,0 +1,65 @@
+# =============================================================================
+# Rate Limiting Policies
+# =============================================================================
+# Local rate limiting configurations using the token bucket algorithm.
+# Reference these in domain routes via per_filter_config.local_ratelimit.
+#
+# Token Bucket Algorithm:
+#   - Bucket starts with 'max_tokens' tokens
+#   - Each request consumes 1 token
+#   - Tokens are refilled at 'tokens_per_fill' every 'fill_interval'
+#   - Requests are rejected (429) when bucket is empty
+
+local_ratelimits:
+  # -------------------------------------------------------------------------
+  # Default rate limit - suitable for most routes
+  # -------------------------------------------------------------------------
+  # Allows 100 requests per second with burst capacity.
+  # Good for general web traffic and APIs.
+  default:
+    max_tokens: 100        # Maximum burst size
+    tokens_per_fill: 100   # Tokens added per interval
+    fill_interval: 1s      # Refill every second
+
+  # -------------------------------------------------------------------------
+  # Strict rate limit - for sensitive endpoints
+  # -------------------------------------------------------------------------
+  # Use for login pages, password reset, admin endpoints.
+  # Protects against brute force and credential stuffing attacks.
+  strict:
+    max_tokens: 30
+    tokens_per_fill: 30
+    fill_interval: 1s
+
+  # -------------------------------------------------------------------------
+  # Moderate rate limit - balanced protection
+  # -------------------------------------------------------------------------
+  # For endpoints that need some protection but higher throughput.
+  # Example: user registration, API key generation.
+  moderate:
+    max_tokens: 60
+    tokens_per_fill: 60
+    fill_interval: 1s
+
+  # -------------------------------------------------------------------------
+  # Relaxed rate limit - high traffic endpoints
+  # -------------------------------------------------------------------------
+  # For public-facing APIs and read-heavy endpoints.
+  # Example: search, listing pages, public data.
+  relaxed:
+    max_tokens: 300
+    tokens_per_fill: 300
+    fill_interval: 1s
+
+  # -------------------------------------------------------------------------
+  # Example: Custom rate limits for your application
+  # -------------------------------------------------------------------------
+  # login:
+  #   max_tokens: 10
+  #   tokens_per_fill: 10
+  #   fill_interval: 1s
+  #
+  # api_writes:
+  #   max_tokens: 50
+  #   tokens_per_fill: 50
+  #   fill_interval: 1s
