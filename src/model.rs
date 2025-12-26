@@ -41,7 +41,6 @@ fn default_log_path() -> String { "/dev/stdout".into() }
 #[derive(Debug, Deserialize)]
 pub struct RuntimeSpec {
     pub validate: ValidateSpec,
-    pub restart: RestartSpec,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,15 +50,6 @@ pub enum ValidateSpec {
     Native {},
     #[serde(rename="docker_image")]
     DockerImage { image: String },
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag="type")]
-pub enum RestartSpec {
-    #[serde(rename="docker_restart")]
-    DockerRestart { container: String },
-    #[serde(rename="docker_compose")]
-    DockerCompose { service: String, file: Option<String> },
 }
 
 #[derive(Debug, Deserialize)]

@@ -6,37 +6,34 @@ This document describes the architecture of envoyctl and how its components inte
 
 ## High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              envoyctl CLI                                    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐              │
-│  │   init   │    │  build   │    │ validate │    │  apply   │              │
-│  └────┬─────┘    └────┬─────┘    └────┬─────┘    └────┬─────┘              │
-│       │               │               │               │                     │
-│       │               ▼               ▼               ▼                     │
-│       │         ┌─────────────────────────────────────────┐                │
-│       │         │              Core Pipeline              │                │
-│       │         │  ┌──────┐  ┌──────────┐  ┌──────────┐  │                │
-│       │         │  │ load │─▶│ validate │─▶│ generate │  │                │
-│       │         │  └──────┘  └──────────┘  └──────────┘  │                │
-│       │         └─────────────────────────────────────────┘                │
-│       │                           │                                         │
-│       ▼                           ▼                                         │
-│  ┌──────────┐              ┌──────────────┐                                │
-│  │ Template │              │ Envoy Config │                                │
-│  │   Copy   │              │    (YAML)    │                                │
-│  └──────────┘              └──────────────┘                                │
-│                                   │                                         │
-│                                   ▼                                         │
-│                            ┌──────────────┐                                │
-│                            │    exec      │                                │
-│                            │  (docker/    │                                │
-│                            │   native)    │                                │
-│                            └──────────────┘                                │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph "envoyctl CLI"
+        A[init]
+        B[build]
+        C[validate]
+    end
+
+    subgraph "Core Pipeline"
+        LOAD[load]
+        VAL[validate]
+        GEN[generate]
+    end
+
+    subgraph "Output"
+        TEMPLATE[Template Copy]
+        CONFIG[Envoy Config YAML]
+    end
+
+    A --> TEMPLATE
+    B --> LOAD
+    C --> LOAD
+    D --> LOAD
+
+    LOAD --> VAL
+    VAL --> GEN
+    GEN --> CONFIG
+    CONFIG --> EXEC
 ```
 
 ---
@@ -154,77 +151,85 @@ Workspace initialization:
 
 ### Docker Validation (Recommended)
 
-```
-┌─────────────┐     ┌──────────────────────────────────┐
-│  envoyctl   │────▶│  docker run envoyproxy/envoy     │
-│             │     │    --mode validate               │
-│             │     │    -c /mounted/config.yaml       │
-└─────────────┘     └──────────────────────────────────┘
-                                   │
-                                   ▼
-                           Validation Result
+```mermaid
+graph LR
+    A[envoyctl] -->|mount config| B["docker run envoyproxy/envoy --mode validate -c /mounted/config.yaml"]
+    B --> C[Validation Result]
 ```
 
 ### Native Validation
 
-```
-┌─────────────┐     ┌──────────────────────────────────┐
-│  envoyctl   │────▶│  envoy --mode validate           │
-│             │     │    -c /path/to/config.yaml       │
-└─────────────┘     └──────────────────────────────────┘
+```mermaid
+graph LR
+    A[envoyctl] -->|validate config| B["envoy --mode validate -c /path/to/config.yaml"]
+    B --> C[Validation Result]
 ```
 
 ---
 
 ## Directory Structure
 
-```
-/var/lib/envoyctl/work/          # Default workspace
-├── config/                       # Input: Configuration fragments
-│   ├── common/                   # Shared settings
-│   │   ├── admin.yaml           # Admin interface config
-│   │   ├── defaults.yaml        # Global defaults
-│   │   ├── runtime.yaml         # Validation/restart settings
-│   │   └── access_log.yaml      # Logging configuration
-│   ├── domains/                  # Domain definitions
-│   │   └── *.yaml               # One file per domain
-│   ├── upstreams/               # Backend clusters
-│   │   └── *.yaml               # One file per upstream
-│   └── policies/                # Reusable policies
-│       ├── headers.yaml         # Header manipulation
-│       ├── ratelimits.yaml      # Rate limiting rules
-│       ├── retries.yaml         # Retry policies
-│       └── timeouts.yaml        # Timeout configurations
-│
-└── out/                          # Output: Generated config
-    └── envoy.generated.yaml     # Complete Envoy configuration
+```mermaid
+C4Component
+    title Directory Structure for envoyctl
+    Container_Boundary(workspace, "/var/lib/envoyctl/work/") {
+        Container(config, "config/", "Input: Configuration fragments")
+        Container_Boundary(common, "common/", "Shared settings") {
+            Component(admin, "admin.yaml", "YAML", "Admin interface config")
+            Component(defaults, "defaults.yaml", "YAML", "Global defaults")
+            Component(runtime, "runtime.yaml", "YAML", "Validation settings")
+            Component(access_log, "access_log.yaml", "YAML", "Logging configuration")
+        }
+        Container_Boundary(domains, "domains/", "Domain definitions") {
+            Component(domain_yaml, "*.yaml", "YAML", "One file per domain")
+        }
+        Container_Boundary(upstreams, "upstreams/", "Backend clusters") {
+            Component(upstream_yaml, "*.yaml", "YAML", "One file per upstream")
+        }
+        Container_Boundary(policies, "policies/", "Reusable policies") {
+            Component(headers, "headers.yaml", "YAML", "Header manipulation")
+            Component(ratelimits, "ratelimits.yaml", "YAML", "Rate limiting rules")
+            Component(retries, "retries.yaml", "YAML", "Retry policies")
+            Component(timeouts, "timeouts.yaml", "YAML", "Timeout configurations")
+        }
+        Container_Boundary(out, "out/", "Output: Generated config") {
+            Component(generated, "envoy.generated.yaml", "YAML", "Complete Envoy configuration")
+        }
+    }
+
+    Rel(config, common, "contains")
+    Rel(config, domains, "contains")
+    Rel(config, upstreams, "contains")
+    Rel(config, policies, "contains")
+    Rel(workspace, out, "contains")
 ```
 
 ---
 
 ## Security Model
 
-```
-┌────────────────────────────────────────────────────────────┐
-│                    systemd Hardening                        │
-├────────────────────────────────────────────────────────────┤
-│  • NoNewPrivileges=yes                                      │
-│  • ProtectSystem=strict                                     │
-│  • ReadWritePaths=/var/lib/envoyctl, /etc/envoy            │
-│  • PrivateTmp=yes                                           │
-└────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────────┐
-│                    Validation Pipeline                      │
-├────────────────────────────────────────────────────────────┤
-│  1. Load fragments (read-only)                              │
-│  2. Semantic validation (in-memory)                         │
-│  3. Generate config (write to out/)                         │
-│  4. Envoy validation (sandboxed)                            │
-│  5. Atomic install (if validation passes)                   │
-│  6. Restart Envoy (controlled)                              │
-└────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph "systemd Hardening"
+        A[NoNewPrivileges=yes]
+        B[ProtectSystem=strict]
+        C[ReadWritePaths=/var/lib/envoyctl, /etc/envoy]
+        D[PrivateTmp=yes]
+    end
+
+    A --> PIPELINE
+    B --> PIPELINE
+    C --> PIPELINE
+    D --> PIPELINE
+
+    subgraph "Validation Pipeline"
+        PIPELINE["1. Load fragments (read-only)"]
+        PIPELINE --> VALIDATION["2. Semantic validation (in-memory)"]
+        VALIDATION --> GENERATE["3. Generate config (write to out/)"]
+        GENERATE --> ENVOY_VALIDATION["4. Envoy validation (sandboxed)"]
+        ENVOY_VALIDATION --> ATOMIC_INSTALL["5. Atomic install (if validation passes)"]
+        ATOMIC_INSTALL --> RESTART["6. Restart Envoy (controlled)"]
+    end
 ```
 
 ---

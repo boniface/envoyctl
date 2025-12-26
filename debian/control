@@ -8,7 +8,7 @@ Homepage: https://github.com/your-org/envoyctl
 
 Package: envoyctl
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, docker.io | docker-ce, ca-certificates
+Depends: ${shlibs:Depends}, ${misc:Depends}, ca-certificates
 Description: Generate and manage Envoy config from small fragments
  A small tool that compiles manageable YAML fragments into a full Envoy config,
  validates it using Envoy, and applies it safely.

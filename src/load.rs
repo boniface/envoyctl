@@ -7,7 +7,7 @@ pub struct Loaded {
     pub admin: AdminSpec,
     pub defaults: DefaultsSpec,
     pub access_log: AccessLogSpec,
-    pub runtime: RuntimeSpec,
+    pub validate: ValidateSpec,
     pub domains: Vec<DomainSpec>,
     pub upstreams: Vec<UpstreamSpec>,
     pub policies: PoliciesSpec,
@@ -23,7 +23,15 @@ pub fn load_all(config_dir: &Path) -> Result<Loaded> {
     let domains = read_dir_yaml::<DomainSpec>(&config_dir.join("domains"))?;
     let upstreams = read_dir_yaml::<UpstreamSpec>(&config_dir.join("upstreams"))?;
 
-    Ok(Loaded { admin, defaults, access_log, runtime, domains, upstreams, policies })
+    Ok(Loaded {
+        admin,
+        defaults,
+        access_log,
+        validate: runtime.validate,  // Extract validate from runtime
+        domains,
+        upstreams,
+        policies
+    })
 }
 
 fn read_yaml<T: serde::de::DeserializeOwned>(path: PathBuf) -> Result<T> {
@@ -146,7 +154,6 @@ port: 9000
         fs::write(config_dir.join("common/defaults.yaml"), "route_timeout: \"60s\"").unwrap();
         fs::write(config_dir.join("common/access_log.yaml"), "type: \"stdout\"\npath: \"/dev/stdout\"").unwrap();
         fs::write(config_dir.join("common/runtime.yaml"), r#"validate: {type: "native"}
-restart: {type: "docker_restart", container: "envoy"}
 "#).unwrap();
 
         // Write policies file

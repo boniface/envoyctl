@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 %:
-	dh $@ --with systemd
+	dh $@
 
 override_dh_auto_build:
 	cargo build --release
@@ -17,9 +17,3 @@ override_dh_auto_install:
 
 	install -D -m 0644 debian/envoyctl.default \
 	  debian/envoyctl/etc/default/envoyctl
-
-	install -D -m 0644 debian/envoyctl-apply.service \
-	  debian/envoyctl/lib/systemd/system/envoyctl-apply.service
-
-	install -D -m 0644 debian/envoyctl-apply.timer \
-	  debian/envoyctl/lib/systemd/system/envoyctl-apply.timer

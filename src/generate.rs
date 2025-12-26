@@ -468,10 +468,7 @@ mod tests {
                 r#type: "stdout".to_string(),
                 path: "/dev/stdout".to_string(),
             },
-            runtime: RuntimeSpec {
-                validate: ValidateSpec::Native {},
-                restart: RestartSpec::DockerRestart { container: "envoy".to_string() },
-            },
+            validate: ValidateSpec::Native {},
             domains: vec![],
             upstreams: vec![
                 UpstreamSpec {
@@ -533,10 +530,7 @@ mod tests {
                 r#type: "stdout".to_string(),
                 path: "/dev/stdout".to_string(),
             },
-            runtime: RuntimeSpec {
-                validate: ValidateSpec::Native {},
-                restart: RestartSpec::DockerRestart { container: "envoy".to_string() },
-            },
+            validate: ValidateSpec::Native {},
             domains: vec![
                 DomainSpec {
                     domain: "example.com".to_string(),

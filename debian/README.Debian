@@ -1,13 +1,16 @@
-envoyctl installs a systemd service/timer that runs envoyctl apply.
+envoyctl is a command-line tool for managing Envoy configurations from small fragments.
 
 Configuration:
-  /etc/default/envoyctl
+  /etc/default/envoyctl (optional, for default paths)
 
-Workspace:
-  /var/lib/envoyctl/work
+Usage:
+  # Initialize a new workspace
+  envoyctl init --dir ./my-envoy-config
 
-To run once:
-  systemctl start envoyctl-apply.service
+  # Generate Envoy configuration from fragments
+  envoyctl build --config-dir ./my-envoy-config/config --out-dir ./my-envoy-config/out
 
-To enable periodic apply:
-  systemctl enable --now envoyctl-apply.timer
+  # Validate configuration fragments
+  envoyctl validate --config-dir ./my-envoy-config/config --out-dir ./my-envoy-config/out
+
+The generated configuration is output to out/envoy.generated.yaml and can be manually deployed to Envoy.

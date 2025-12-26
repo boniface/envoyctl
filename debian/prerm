@@ -3,9 +3,7 @@ set -e
 
 case "$1" in
   remove|upgrade|deconfigure)
-    # If you later add a systemd unit, you might stop it here:
-    # systemctl stop envoyctl.service 2>/dev/null || true
-    # systemctl disable envoyctl.service 2>/dev/null || true
+    # No systemd units to manage - pure command-line tool
     ;;
 esac
 

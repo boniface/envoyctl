@@ -22,8 +22,7 @@ flowchart LR
     end
 
     subgraph Output["Output"]
-        O[envoy.generated.yaml]
-        I[/etc/envoy/envoy.yaml]
+        O["envoy.generated.yaml"]
     end
 
     D --> L
@@ -42,89 +41,116 @@ flowchart LR
 
 ### Stage 1: Loading
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           load.rs                                        │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  config/common/defaults.yaml  ─────┐                                    │
-│  config/common/admin.yaml     ─────┤                                    │
-│  config/common/runtime.yaml   ─────┼────▶  LoadedConfig {               │
-│                                    │          defaults: DefaultsSpec,   │
-│  config/domains/*.yaml        ─────┤          admin: AdminSpec,         │
-│                                    │          runtime: RuntimeSpec,     │
-│  config/upstreams/*.yaml      ─────┤          domains: Vec<DomainSpec>, │
-│                                    │          upstreams: Vec<Upstream>, │
-│  config/policies/*.yaml       ─────┘          policies: PolicyBundle,   │
-│                                             }                            │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    subgraph "Input Files"
+        A["config/common/defaults.yaml"]
+        B["config/common/admin.yaml"]
+        C["config/common/runtime.yaml"]
+        D["config/domains/*.yaml"]
+        E["config/upstreams/*.yaml"]
+        F["config/policies/*.yaml"]
+    end
+
+    subgraph "load.rs Processing"
+        G["Load & Parse"]
+    end
+
+    subgraph "Output Structure"
+        H["LoadedConfig {<br/>  defaults: DefaultsSpec,<br/>  admin: AdminSpec,<br/>  runtime: RuntimeSpec,<br/>  domains: Vec&lt;DomainSpec&gt;,<br/>  upstreams: Vec&lt;UpstreamSpec&gt;,<br/>  policies: PolicyBundle<br/>}"]
+    end
+
+    A --> G
+    B --> G
+    C --> G
+    D --> G
+    E --> G
+    F --> G
+    G --> H
 ```
 
 ### Stage 2: Validation
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         validate.rs                                      │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  LoadedConfig                                                            │
-│       │                                                                  │
-│       ▼                                                                  │
-│  ┌─────────────────────────────────────────────────────────────┐        │
-│  │  Validation Checks                                           │        │
-│  ├─────────────────────────────────────────────────────────────┤        │
-│  │  ✓ All domain.to_upstream references exist in upstreams     │        │
-│  │  ✓ All policy references (rate limits, headers) exist       │        │
-│  │  ✓ TLS cert paths are specified for terminate mode          │        │
-│  │  ✓ Required fields are present and valid                    │        │
-│  │  ✓ No duplicate domain names                                │        │
-│  │  ✓ No duplicate upstream names                              │        │
-│  └─────────────────────────────────────────────────────────────┘        │
-│       │                                                                  │
-│       ▼                                                                  │
-│  Result<(), ValidationError>                                             │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    A["LoadedConfig"]
+    A --> B["validate.rs Processing"]
+
+    subgraph "Validation Checks"
+        C["✓ All domain.to_upstream references exist in upstreams"]
+        D["✓ All policy references exist"]
+        E["✓ TLS cert paths specified for terminate mode"]
+        F["✓ Required fields present and valid"]
+        G["✓ No duplicate domain names"]
+        H["✓ No duplicate upstream names"]
+    end
+
+    B --> C
+    B --> D
+    B --> E
+    B --> F
+    B --> G
+    B --> H
+
+    C --> I["Result<(), ValidationError>"]
+    D --> I
+    E --> I
+    F --> I
+    G --> I
+    H --> I
 ```
 
 ### Stage 3: Generation
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         generate.rs                                      │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  LoadedConfig                                                            │
-│       │                                                                  │
-│       ▼                                                                  │
-│  ┌───────────────────┐    ┌───────────────────┐                         │
-│  │  Build Listeners  │    │  Build Clusters   │                         │
-│  │  ───────────────  │    │  ───────────────  │                         │
-│  │  • HTTP :80       │    │  • From upstreams │                         │
-│  │  • HTTPS :443     │    │  • Endpoints      │                         │
-│  │  • TLS terminate  │    │  • Health checks  │                         │
-│  │  • TLS passthrough│    │  • Timeouts       │                         │
-│  └─────────┬─────────┘    └─────────┬─────────┘                         │
-│            │                        │                                    │
-│            ▼                        ▼                                    │
-│  ┌─────────────────────────────────────────────────────────────┐        │
-│  │                    Envoy Config (YAML)                       │        │
-│  │  ─────────────────────────────────────────────────────────  │        │
-│  │  admin:                                                      │        │
-│  │    address: ...                                              │        │
-│  │  static_resources:                                           │        │
-│  │    listeners:                                                │        │
-│  │      - name: http_listener                                   │        │
-│  │        filter_chains: ...                                    │        │
-│  │      - name: https_listener                                  │        │
-│  │        filter_chains: ...                                    │        │
-│  │    clusters:                                                 │        │
-│  │      - name: upstream_1                                      │        │
-│  │        endpoints: ...                                        │        │
-│  └─────────────────────────────────────────────────────────────┘        │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    A["LoadedConfig"]
+    A --> B["generate.rs Processing"]
+
+    subgraph "Build Components"
+        C["Build Listeners"]
+        D["Build Clusters"]
+    end
+
+    subgraph "Listener Details"
+        C1["• HTTP :80"]
+        C2["• HTTPS :443"]
+        C3["• TLS terminate"]
+        C4["• TLS passthrough"]
+    end
+
+    subgraph "Cluster Details"
+        D1["• From upstreams"]
+        D2["• Endpoints"]
+        D3["• Health checks"]
+        D4["• Timeouts"]
+    end
+
+    B --> C
+    B --> D
+    C --> C1
+    C --> C2
+    C --> C3
+    C --> C4
+    D --> D1
+    D --> D2
+    D --> D3
+    D --> D4
+
+    C --> E["Envoy Config (YAML)"]
+    D --> E
+
+    subgraph "Generated YAML Structure"
+        F["• admin: address, port"]
+        G["• static_resources: listeners, clusters"]
+        H["• listeners: http, https, tls"]
+        I["• clusters: endpoints, load assignment"]
+    end
+
+    E --> F
+    E --> G
+    E --> H
+    E --> I
 ```
 
 ---
@@ -290,32 +316,58 @@ sequenceDiagram
 
 ## Error Propagation
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        Error Flow                                        │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  Load Error                                                              │
-│  ├── File not found → "could not read config/domains/foo.yaml"          │
-│  ├── Parse error → "YAML error at line 5: expected string"              │
-│  └── Missing field → "domain.yaml: missing required field 'domain'"     │
-│                                                                          │
-│  Validation Error                                                        │
-│  ├── Unknown upstream → "domain 'x.com' references unknown upstream 'y'"│
-│  ├── Unknown policy → "route references unknown rate limit 'z'"         │
-│  └── Duplicate name → "duplicate upstream name: 'backend'"              │
-│                                                                          │
-│  Generation Error                                                        │
-│  └── Serialization → "failed to serialize envoy config"                 │
-│                                                                          │
-│  Envoy Validation Error                                                  │
-│  └── Config invalid → "envoy validation failed: [envoy output]"         │
-│                                                                          │
-│  Apply Error                                                             │
-│  ├── Install failed → "could not write to /etc/envoy/envoy.yaml"        │
-│  └── Restart failed → "docker-compose restart failed: [output]"         │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph "Load Error"
+        A1["File not found"]
+        A2["Parse error"]
+        A3["Missing field"]
+    end
+
+    subgraph "Validation Error"
+        B1["Unknown upstream"]
+        B2["Unknown policy"]
+        B3["Duplicate name"]
+    end
+
+    subgraph "Generation Error"
+        C1["Serialization"]
+    end
+
+    subgraph "Envoy Validation Error"
+        D1["Config invalid"]
+    end
+
+    subgraph "Apply Error"
+        E1["Install failed"]
+        E2["Restart failed"]
+    end
+
+    A1 --> A_out["'could not read config/domains/foo.yaml'"]
+    A2 --> A_out2["'YAML error at line 5: expected string'"]
+    A3 --> A_out3["'domain.yaml: missing required field domain'"]
+
+    B1 --> B_out["'domain x.com references unknown upstream y'"]
+    B2 --> B_out2["'route references unknown rate limit z'"]
+    B3 --> B_out3["'duplicate upstream name: backend'"]
+
+    C1 --> C_out["'failed to serialize envoy config'"]
+
+    D1 --> D_out["'envoy validation failed: [envoy output]'"]
+
+    E1 --> E_out["'could not write to /etc/envoy/envoy.yaml'"]
+    E2 --> E_out2["'docker-compose restart failed: [output]'"]
+
+    A_out --> ErrorHandling["Error Handling with anyhow::Result"]
+    A_out2 --> ErrorHandling
+    A_out3 --> ErrorHandling
+    B_out --> ErrorHandling
+    B_out2 --> ErrorHandling
+    B_out3 --> ErrorHandling
+    C_out --> ErrorHandling
+    D_out --> ErrorHandling
+    E_out --> ErrorHandling
+    E_out2 --> ErrorHandling
 ```
 
 All errors include context and are propagated up using `anyhow::Result` with `.context()` for clear error messages.

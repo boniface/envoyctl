@@ -34,7 +34,6 @@ pub enum Command {
     },
     Build,
     Validate,
-    Apply,
 }
 
 #[cfg(test)]
@@ -62,16 +61,6 @@ mod tests {
         match cli.cmd {
             Command::Validate => {}, // Expected
             _ => panic!("Expected Validate command"),
-        }
-    }
-
-    #[test]
-    fn test_cli_parse_apply() {
-        let args = vec!["envoyctl", "apply"];
-        let cli = Cli::try_parse_from(args).unwrap();
-        match cli.cmd {
-            Command::Apply => {}, // Expected
-            _ => panic!("Expected Apply command"),
         }
     }
 

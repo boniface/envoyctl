@@ -4,7 +4,47 @@
 
 **envoyctl** is a configuration management and deployment tool for [Envoy Proxy](https://www.envoyproxy.io/).
 
-It lets you manage complex Envoy configurations using **small, focused YAML fragments**, validates the generated configuration using Envoy itself, and safely applies changes via **systemd** or **Docker**.
+It lets you manage complex Envoy configurations using **small, focused YAML fragments** and validates the generated configuration using Envoy itself.
+
+## Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "Configuration Fragments"
+        A[domains/*.yaml]
+        B[upstreams/*.yaml]
+        C[policies/*.yaml]
+        D[common/*.yaml]
+    end
+
+    subgraph "envoyctl Processing"
+        E[load fragments]
+        F[validate config]
+        G[generate Envoy YAML]
+    end
+
+    subgraph "Deployment"
+        H["validate with Envoy"]
+        I["atomic install"]
+        J["restart Envoy"]
+    end
+
+    A --> E
+    B --> E
+    C --> E
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    H --> I
+    I --> J
+
+    subgraph "Generated Output"
+        K[envoy.generated.yaml]
+    end
+
+    G --> K
+```
 
 ---
 
@@ -223,35 +263,48 @@ sudo apt install envoyctl
 | `/usr/share/envoyctl/templates/` | Workspace templates |
 | `/etc/default/envoyctl` | Runtime configuration |
 | `/var/lib/envoyctl/work/` | Default workspace |
-| `envoyctl-apply.service` | systemd oneshot service |
-| `envoyctl-apply.timer` | systemd timer (optional) |
 
 ---
 
 ## Workspace Layout
 
-```
-my-envoy-config/
-├── config/
-│   ├── common/
-│   │   ├── admin.yaml              # Envoy admin interface
-│   │   ├── defaults.yaml           # Global defaults
-│   │   ├── runtime.yaml            # Validation/restart settings
-│   │   ├── access_log.yaml         # Logging configuration
-│   │   ├── default_http_backend.yaml
-│   │   └── default_tls_backend.yaml
-│   ├── domains/
-│   │   └── example.com.yaml        # One file per domain
-│   ├── upstreams/
-│   │   ├── api_backend.yaml        # One file per backend
-│   │   └── web_frontend.yaml
-│   └── policies/
-│       ├── headers.yaml            # Header manipulation
-│       ├── ratelimits.yaml         # Rate limiting rules
-│       ├── retries.yaml            # Retry policies
-│       └── timeouts.yaml           # Timeout configurations
-└── out/
-    └── envoy.generated.yaml        # Generated config (don't edit!)
+```mermaid
+C4Component
+    title Workspace Layout for envoyctl
+    Container_Boundary(workspace, "my-envoy-config/") {
+        Container_Boundary(config, "config/", "Configuration fragments") {
+            Container_Boundary(common, "common/", "Shared settings") {
+                Component(admin, "admin.yaml", "YAML", "Envoy admin interface")
+                Component(defaults, "defaults.yaml", "YAML", "Global defaults")
+                Component(runtime, "runtime.yaml", "YAML", "Validation settings")
+                Component(access_log, "access_log.yaml", "YAML", "Logging configuration")
+                Component(default_http, "default_http_backend.yaml", "YAML", "Default HTTP backend")
+                Component(default_tls, "default_tls_backend.yaml", "YAML", "Default TLS backend")
+            }
+            Container_Boundary(domains, "domains/", "Domain definitions") {
+                Component(domain_example, "example.com.yaml", "YAML", "One file per domain")
+            }
+            Container_Boundary(upstreams, "upstreams/", "Backend clusters") {
+                Component(upstream_api, "api_backend.yaml", "YAML", "One file per backend")
+                Component(upstream_web, "web_frontend.yaml", "YAML", "One file per backend")
+            }
+            Container_Boundary(policies, "policies/", "Reusable policies") {
+                Component(headers, "headers.yaml", "YAML", "Header manipulation")
+                Component(ratelimits, "ratelimits.yaml", "YAML", "Rate limiting rules")
+                Component(retries, "retries.yaml", "YAML", "Retry policies")
+                Component(timeouts, "timeouts.yaml", "YAML", "Timeout configurations")
+            }
+        }
+        Container_Boundary(out, "out/", "Generated output") {
+            Component(generated, "envoy.generated.yaml", "YAML", "Generated config (don't edit!)")
+        }
+    }
+
+    Rel(config, common, "contains")
+    Rel(config, domains, "contains")
+    Rel(config, upstreams, "contains")
+    Rel(config, policies, "contains")
+    Rel(workspace, out, "contains")
 ```
 
 ---
@@ -328,7 +381,6 @@ routes:
 | `envoyctl init` | Create a new workspace from templates |
 | `envoyctl build` | Generate Envoy config from fragments |
 | `envoyctl validate` | Build + validate with Envoy |
-| `envoyctl apply` | Validate + install + restart Envoy |
 
 ### Common Options
 
@@ -362,48 +414,15 @@ This mirrors common edge-proxy setups and avoids breaking unknown hosts.
 
 ## Validation & Safety
 
-Before any configuration is installed:
+Before any configuration is generated:
 
 1. Fragment references are validated (upstreams exist, policies defined)
 2. Envoy validates the generated config: `envoy --mode validate -c config.yaml`
-3. The config is atomically replaced (write to temp, then rename)
-4. Envoy is restarted only if validation succeeds
 
-**If validation fails, nothing is changed.**
+The generated configuration file can then be manually deployed to Envoy.
 
 ---
 
-## systemd Integration
-
-### Units Provided
-
-| Unit | Type | Description |
-|------|------|-------------|
-| `envoyctl-apply.service` | oneshot | Runs envoyctl apply |
-| `envoyctl-apply.timer` | timer | Periodic apply (optional) |
-
-### Usage
-
-```bash
-# Apply configuration now
-sudo systemctl start envoyctl-apply.service
-
-# Enable periodic apply (e.g., every hour)
-sudo systemctl enable --now envoyctl-apply.timer
-
-# Check status
-systemctl status envoyctl-apply.service
-journalctl -u envoyctl-apply.service
-```
-
-### Configuration: `/etc/default/envoyctl`
-
-```bash
-ENVOYCTL_WORKDIR=/var/lib/envoyctl/work
-ENVOYCTL_CONFIG_DIR=/var/lib/envoyctl/work/config
-ENVOYCTL_OUT_DIR=/var/lib/envoyctl/work/out
-ENVOYCTL_INSTALL_PATH=/etc/envoy/envoy.yaml
-```
 
 ---
 
@@ -414,7 +433,7 @@ For Docker-based deployments, see the [Docker Deployment Tutorial](docs/docker-d
 Quick example:
 
 ```bash
-# Validate using Docker
+# Generate and validate using Docker
 envoyctl validate --config-dir ./config --out-dir ./out
 
 # Run Envoy with the generated config
