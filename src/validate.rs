@@ -66,7 +66,7 @@ mod tests {
                 }),
                 routes: vec![
                     RouteSpec {
-                        m: MatchSpec::Prefix("/api".to_string()),
+                        m: MatchSpec { prefix: Some("/api".to_string()), path: None },
                         to_upstream: "api_backend".to_string(),
                         timeout: Some("30s".to_string()),
                         per_filter_config: None,
@@ -388,7 +388,7 @@ mod tests {
                 }),
                 routes: vec![
                     RouteSpec {
-                        m: MatchSpec::Prefix("/api".to_string()),
+                        m: MatchSpec { prefix: Some("/api".to_string()), path: None },
                         to_upstream: "unknown_backend".to_string(),  // doesn't exist
                         timeout: Some("30s".to_string()),
                         per_filter_config: None,
@@ -449,7 +449,7 @@ mod tests {
                 }),
                 routes: vec![
                     RouteSpec {
-                        m: MatchSpec::Prefix("/api".to_string()),
+                        m: MatchSpec { prefix: Some("/api".to_string()), path: None },
                         to_upstream: "api_backend".to_string(),
                         timeout: Some("30s".to_string()),
                         per_filter_config: Some(PerFilterConfigRef {

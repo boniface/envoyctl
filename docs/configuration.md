@@ -75,47 +75,59 @@ tls_passthrough_upstream: default_tls_backend
 
 ### runtime.yaml
 
-Controls how envoyctl validates and restarts Envoy.
+Controls how envoyctl validates Envoy configuration.
 
 ```yaml
+# Option 1: Docker Exec (for Docker deployments)
 validate:
-  # Validation method: "docker_image" or "native"
-  type: docker_image
-  
-  # Docker image to use for validation (if type: docker_image)
-  image: envoyproxy/envoy:v1.31-latest
-  
-  # Path to envoy binary (if type: native)
-  # bin: /usr/bin/envoy
+  type: docker_exec
+  container: envoy                      # Running container name
+  config_path: /etc/envoy/envoy.yaml    # Config path inside container
 
-restart:
-  # Restart method: "docker_compose", "systemd", or "none"
-  type: docker_compose
-  
-  # Docker Compose settings (if type: docker_compose)
-  service: envoy
-  file: /opt/envoy/docker-compose.yml
-  
-  # systemd settings (if type: systemd)
-  # unit: envoy.service
+# Option 2: Native/Baremetal (for systemd deployments)
+validate:
+  type: native
+  user: envoy                           # User to run validation as
+  bin: envoy                            # Path to envoy binary
+  config_path: /etc/envoy/envoy.yaml    # Config file path
+
+# Option 3: Docker Image (for testing/CI)
+validate:
+  type: docker_image
+  image: envoyproxy/envoy:v1.31-latest  # Envoy image for validation
 ```
 
 #### Validate Options
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | string | `docker_image` or `native` |
-| `image` | string | Docker image (for docker_image type) |
-| `bin` | string | Envoy binary path (for native type) |
+**docker_exec** - Validate inside a running container:
 
-#### Restart Options
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `type` | string | - | Must be `docker_exec` |
+| `container` | string | - | Name of running Envoy container |
+| `config_path` | string | `/etc/envoy/envoy.yaml` | Config path inside container |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | string | `docker_compose`, `systemd`, or `none` |
-| `service` | string | Docker Compose service name |
-| `file` | string | Docker Compose file path |
-| `unit` | string | systemd unit name |
+Command: `docker exec <container> envoy --mode validate -c <config_path>`
+
+**native** - Validate on baremetal using sudo:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `type` | string | - | Must be `native` |
+| `user` | string | `envoy` | User to run envoy as |
+| `bin` | string | `envoy` | Path to envoy binary |
+| `config_path` | string | `/etc/envoy/envoy.yaml` | Config file path |
+
+Command: `sudo -u <user> <bin> --mode validate -c <config_path>`
+
+**docker_image** - Validate using a fresh container:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `type` | string | - | Must be `docker_image` |
+| `image` | string | - | Docker image to use |
+
+Command: `docker run --rm -v <config>:/cfg.yaml:ro <image> envoy --mode validate -c /cfg.yaml`
 
 ---
 

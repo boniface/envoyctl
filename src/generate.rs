@@ -201,9 +201,10 @@ fn route_from_spec(r: &RouteSpec, defaults: &DefaultsSpec, policies: &PoliciesSp
 
 fn match_to_value(m: &MatchSpec) -> Value {
     let mut mm = Mapping::new();
-    match m {
-        MatchSpec::Prefix(p) => { mm.insert(s("prefix"), s(p)); }
-        MatchSpec::Path(p) => { mm.insert(s("path"), s(p)); }
+    if let Some(prefix) = &m.prefix {
+        mm.insert(s("prefix"), s(prefix));
+    } else if let Some(path) = &m.path {
+        mm.insert(s("path"), s(path));
     }
     Value::Mapping(mm)
 }
@@ -468,7 +469,11 @@ mod tests {
                 r#type: "stdout".to_string(),
                 path: "/dev/stdout".to_string(),
             },
-            validate: ValidateSpec::Native {},
+            validate: ValidateSpec::Native {
+                user: "envoy".to_string(),
+                bin: "envoy".to_string(),
+                config_path: "/etc/envoy/envoy.yaml".to_string(),
+            },
             domains: vec![],
             upstreams: vec![
                 UpstreamSpec {
@@ -530,7 +535,11 @@ mod tests {
                 r#type: "stdout".to_string(),
                 path: "/dev/stdout".to_string(),
             },
-            validate: ValidateSpec::Native {},
+            validate: ValidateSpec::Native {
+                user: "envoy".to_string(),
+                bin: "envoy".to_string(),
+                config_path: "/etc/envoy/envoy.yaml".to_string(),
+            },
             domains: vec![
                 DomainSpec {
                     domain: "example.com".to_string(),
@@ -541,7 +550,7 @@ mod tests {
                     }),
                     routes: vec![
                         RouteSpec {
-                            m: MatchSpec::Prefix("/api".to_string()),
+                            m: MatchSpec { prefix: Some("/api".to_string()), path: None },
                             to_upstream: "api_backend".to_string(),
                             timeout: Some("30s".to_string()),
                             per_filter_config: None,
@@ -616,7 +625,7 @@ mod tests {
     #[test]
     fn test_match_to_value() {
         // Test prefix match
-        let prefix_match = MatchSpec::Prefix("/api".to_string());
+        let prefix_match = MatchSpec { prefix: Some("/api".to_string()), path: None };
         let result = match_to_value(&prefix_match);
         match &result {
             Value::Mapping(m) => {
@@ -626,7 +635,7 @@ mod tests {
         }
 
         // Test path match
-        let path_match = MatchSpec::Path("/exact/path".to_string());
+        let path_match = MatchSpec { prefix: None, path: Some("/exact/path".to_string()) };
         let result = match_to_value(&path_match);
         match &result {
             Value::Mapping(m) => {

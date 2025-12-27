@@ -60,7 +60,6 @@ graph TB
 - [Commands](#commands)
 - [TLS Behavior](#tls-behavior)
 - [Validation & Safety](#validation--safety)
-- [systemd Integration](#systemd-integration)
 - [Docker Deployment](#docker-deployment)
 - [Contributing](#contributing)
 - [License](#license)
@@ -395,6 +394,29 @@ Options:
   -h, --help              Print help
   -V, --version           Print version
 ```
+
+### Using Custom Directories
+
+You can specify custom configuration and output directories:
+
+```bash
+# Default paths (config/ and out/ in current directory)
+envoyctl validate
+
+# Custom config and output directories
+envoyctl validate --config-dir ./my-project/envoy-config --out-dir ./my-project/generated
+
+# Absolute paths
+envoyctl validate --config-dir /home/user/configs --out-dir /tmp/envoy-output
+
+# Different project structure
+envoyctl build --config-dir ../shared-config --out-dir ./local-out
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--config-dir` | Folder containing `domains/`, `upstreams/`, `policies/`, `common/` | `./config` |
+| `--out-dir` | Folder where `envoy.generated.yaml` is written | `./out` |
 
 ---
 

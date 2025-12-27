@@ -1,42 +1,55 @@
 # =============================================================================
 # Runtime Configuration
 # =============================================================================
-# Controls how envoyctl validates and restarts Envoy.
+# Controls how envoyctl validates Envoy configuration.
 
 # -----------------------------------------------------------------------------
 # Validation Settings
 # -----------------------------------------------------------------------------
 # How to run 'envoy --mode validate' to check generated config.
+#
+# Three validation modes are available:
+#
+# 1. docker_exec - Validate inside a running Envoy container
+#    Command: docker exec <container> envoy --mode validate -c <path>
+#    Best for: Docker/Docker Compose deployments
+#
+# 2. native - Validate on baremetal using sudo
+#    Command: sudo -u envoy envoy --mode validate -c <path>
+#    Best for: Baremetal/systemd deployments
+#
+# 3. docker_image - Validate using a fresh container (for testing)
+#    Command: docker run --rm -v <config>:/cfg.yaml:ro <image> envoy --mode validate
+#    Best for: CI/CD pipelines, local development
+
 validate:
-  # Validation type:
-  #   - docker_image: Run Envoy in a Docker container (recommended)
-  #   - native: Use locally installed Envoy binary
-  type: docker_image
+  # -------------------------------------------------------------------------
+  # Option 1: Docker Exec (recommended for Docker deployments)
+  # -------------------------------------------------------------------------
+  # Validates inside your running Envoy container.
+  # The generated config is copied to the container before validation.
+  #
+  type: docker_exec
+  container: envoy                           # Name of your Envoy container
+  config_path: /etc/envoy/envoy.yaml         # Path inside container
 
-  # Docker image to use for validation.
-  # Use the same version as your production Envoy for consistency.
-  # See: https://hub.docker.com/r/envoyproxy/envoy/tags
-  image: envoyproxy/envoy:v1.31-latest
+  # -------------------------------------------------------------------------
+  # Option 2: Native/Baremetal (recommended for systemd deployments)
+  # -------------------------------------------------------------------------
+  # Validates using sudo as the envoy user.
+  # Uncomment below and comment out docker_exec above to use.
+  #
+  # type: native
+  # user: envoy                              # User to run validation as
+  # bin: envoy                               # Path to envoy binary
+  # config_path: /etc/envoy/envoy.yaml       # Path to config file
 
-  # For native validation (when type: native), specify the binary path:
-  # bin: /usr/bin/envoy
+  # -------------------------------------------------------------------------
+  # Option 3: Docker Image (for testing/CI)
+  # -------------------------------------------------------------------------
+  # Spins up a fresh container just for validation.
+  # Useful when you don't have a running Envoy container.
+  #
+  # type: docker_image
+  # image: envoyproxy/envoy:v1.31-latest
 
-# -----------------------------------------------------------------------------
-# Restart Settings
-# -----------------------------------------------------------------------------
-# How to restart Envoy after applying new configuration.
-restart:
-  # Restart type:
-  #   - docker_compose: Use 'docker-compose restart'
-  #   - systemd: Use 'systemctl restart'
-  #   - none: Don't restart (manual reload)
-  type: docker_compose
-
-  # Docker Compose service name (when type: docker_compose)
-  service: envoy
-
-  # Path to docker-compose.yml file
-  file: /opt/envoy/docker-compose.yml
-
-  # For systemd (when type: systemd), specify the unit name:
-  # unit: envoy.service

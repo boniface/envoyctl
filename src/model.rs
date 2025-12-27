@@ -30,8 +30,10 @@ fn default_tls_passthrough_upstream() -> String { "cilium_tls".into() }
 
 #[derive(Debug, Deserialize)]
 pub struct AccessLogSpec {
+    /// Log output type: "stdout" or "file" (reserved for future use)
     #[serde(default = "default_log_type")]
-    pub r#type: String, // "stdout" (initial draft)
+    #[allow(dead_code)]
+    pub r#type: String,
     #[serde(default = "default_log_path")]
     pub path: String,
 }
@@ -43,14 +45,46 @@ pub struct RuntimeSpec {
     pub validate: ValidateSpec,
 }
 
+/// Validation mode for checking Envoy configuration
 #[derive(Debug, Deserialize)]
 #[serde(tag="type")]
 pub enum ValidateSpec {
+    /// Validate using docker exec on a running container
+    /// Command: docker exec -it <container> envoy --mode validate -c <config_path>
+    #[serde(rename="docker_exec")]
+    DockerExec {
+        /// Name of the running Envoy container
+        container: String,
+        /// Path to config inside the container (default: /etc/envoy/envoy.yaml)
+        #[serde(default = "default_container_config_path")]
+        config_path: String,
+    },
+
+    /// Validate on baremetal using sudo
+    /// Command: sudo -u envoy envoy --mode validate -c <config_path>
     #[serde(rename="native")]
-    Native {},
+    Native {
+        /// User to run envoy as (default: envoy)
+        #[serde(default = "default_envoy_user")]
+        user: String,
+        /// Path to envoy binary (default: envoy)
+        #[serde(default = "default_envoy_bin")]
+        bin: String,
+        /// Path to config file (default: /etc/envoy/envoy.yaml)
+        #[serde(default = "default_native_config_path")]
+        config_path: String,
+    },
+
+    /// Validate using docker run with a fresh container (for testing)
+    /// Command: docker run --rm -v <config>:/cfg.yaml:ro <image> envoy --mode validate -c /cfg.yaml
     #[serde(rename="docker_image")]
     DockerImage { image: String },
 }
+
+fn default_container_config_path() -> String { "/etc/envoy/envoy.yaml".into() }
+fn default_envoy_user() -> String { "envoy".into() }
+fn default_envoy_bin() -> String { "envoy".into() }
+fn default_native_config_path() -> String { "/etc/envoy/envoy.yaml".into() }
 
 #[derive(Debug, Deserialize)]
 pub struct UpstreamSpec {
@@ -109,12 +143,14 @@ pub struct PerFilterConfigRef {
     pub local_ratelimit: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum MatchSpec {
-    Prefix(String),
-    Path(String),
+/// Match specification for routes
+/// Supports: { prefix: "/api/" } or { path: "/health" }
+#[derive(Debug, Deserialize, Clone)]
+pub struct MatchSpec {
+    pub prefix: Option<String>,
+    pub path: Option<String>,
 }
+
 
 #[derive(Debug, Deserialize)]
 pub struct PoliciesSpec {
@@ -226,7 +262,8 @@ tls:
   cert_chain: "/path/to/cert"
   private_key: "/path/to/key"
 routes:
-  - match: "/api"
+  - match:
+      prefix: "/api"
     to_upstream: "api_backend"
     timeout: "30s"
 "#;
@@ -254,7 +291,7 @@ routes: []
     #[test]
     fn test_deserialize_route_spec_with_per_filter_config() {
         let yaml = r#"
-match: "/api"
+match: { prefix: "/api" }
 to_upstream: "api_backend"
 timeout: "30s"
 per_filter_config:

@@ -21,7 +21,12 @@ pub fn load_all(config_dir: &Path) -> Result<Loaded> {
     let policies: PoliciesSpec = read_yaml(config_dir.join("policies/ratelimits.yaml"))?;
 
     let domains = read_dir_yaml::<DomainSpec>(&config_dir.join("domains"))?;
-    let upstreams = read_dir_yaml::<UpstreamSpec>(&config_dir.join("upstreams"))?;
+
+    // Load upstreams from upstreams/ directory (strict - will error on parse failures)
+    let mut upstreams = read_dir_yaml::<UpstreamSpec>(&config_dir.join("upstreams"))?;
+    // Also try to load upstreams from common/ (lenient - skips files that don't match)
+    let common_upstreams = try_read_dir_yaml::<UpstreamSpec>(&config_dir.join("common"));
+    upstreams.extend(common_upstreams);
 
     Ok(Loaded {
         admin,
@@ -55,6 +60,26 @@ fn read_dir_yaml<T: serde::de::DeserializeOwned>(dir: &Path) -> Result<Vec<T>> {
         out.push(v);
     }
     Ok(out)
+}
+
+/// Try to read YAML files from a directory, silently skipping files that don't match the target type.
+/// Useful for loading upstreams from common/ where other config files also exist.
+fn try_read_dir_yaml<T: serde::de::DeserializeOwned>(dir: &Path) -> Vec<T> {
+    let mut out = Vec::new();
+    if !dir.exists() {
+        return out;
+    }
+    for e in WalkDir::new(dir).min_depth(1).max_depth(1).into_iter().flatten() {
+        if !e.file_type().is_file() { continue; }
+        let p = e.path();
+        if !matches!(p.extension().and_then(|x| x.to_str()), Some("yaml" | "yml")) { continue; }
+        if let Ok(s) = std::fs::read_to_string(p) {
+            if let Ok(v) = serde_yaml::from_str(&s) {
+                out.push(v);
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -153,7 +178,11 @@ port: 9000
         fs::write(config_dir.join("common/admin.yaml"), "address: \"0.0.0.0\"\nport: 9901").unwrap();
         fs::write(config_dir.join("common/defaults.yaml"), "route_timeout: \"60s\"").unwrap();
         fs::write(config_dir.join("common/access_log.yaml"), "type: \"stdout\"\npath: \"/dev/stdout\"").unwrap();
-        fs::write(config_dir.join("common/runtime.yaml"), r#"validate: {type: "native"}
+        fs::write(config_dir.join("common/runtime.yaml"), r#"validate:
+  type: "native"
+  user: "envoy"
+  bin: "envoy"
+  config_path: "/etc/envoy/envoy.yaml"
 "#).unwrap();
 
         // Write policies file
