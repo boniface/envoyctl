@@ -1,0 +1,26 @@
+Origin: envoyctl
+Label: envoyctl
+Suite: stable
+Codename: stable
+Version: 0.0.1
+Architectures: amd64
+Components: main
+Description: Envoy configuration management tool
+Date: Sat, 27 Dec 2025 18:29:13 +0000
+Date: Sat, 27 Dec 2025 18:29:13 +0000
+MD5Sum:
+ 407a2ead834725d903b1623d2602ab33              242 Release
+ 577a6fdd3d63e80e197f5746818773e6              854 main/binary-amd64/Packages
+ 6be6626c74b66d26ee7cfe9d67eb3a10              545 main/binary-amd64/Packages.gz
+SHA1:
+ 7bd50a3b9f46964c65bf0a7762546a8bd36a3142              242 Release
+ 2ce1d4d362583b4428fbbea0284f49be8eb2e94a              854 main/binary-amd64/Packages
+ 203e160f7c8a44929c4e5e03bf79bcb46f8b0620              545 main/binary-amd64/Packages.gz
+SHA256:
+ 8f36b256ff8283eaab7f341d26eec8fe220c445ca10f389fdee267218bb388a5              242 Release
+ e0ecfe619f1e9d1a064a6dd77b4ae543b5267b085cb7ac3718cc833bbb8adffe              854 main/binary-amd64/Packages
+ 347917bbcb36f795caa56ce0998ef99a1da4940827b56adddbd234d444e319f5              545 main/binary-amd64/Packages.gz
+SHA512:
+ e0f3ce408250dea1f44d2add037b24184137694bc75c5f6255911a46cdd2d990cc90879a54ac34c9c6164b5447088e8a99d7e909dcd99d69c47b66931980360b              242 Release
+ 228985912e9ea74edc9882c1e9ad6d8e2c696fe0f9a11b191cbf7f4010169a2735d117215510dc5f75919bc26266ea375482a2dd474a9f85d3a689df5c353cab              854 main/binary-amd64/Packages
+ 6e7bd3dd48a36ba9f2b7b06b444861ed2965a5611a674a2e58a70092c3365623f0d6504edbf31242cb372e6d2400bb12cf4934fbff63aeea08b3e40e3eae1440              545 main/binary-amd64/Packages.gz
