@@ -220,6 +220,63 @@ jobs:
           find apt-repo -type f -exec ls -la {} \;
         shell: bash
 
+      - name: Create index.html
+        run: |
+          cat > apt-repo/index.html <<'HTMLEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>envoyctl APT Repository</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+              h1 { color: #333; }
+              pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+              code { background: #e8e8e8; padding: 2px 6px; border-radius: 3px; }
+              .step { margin: 20px 0; }
+            </style>
+          </head>
+          <body>
+            <h1>📦 envoyctl APT Repository</h1>
+            <p>This is the APT repository for <strong>envoyctl</strong> - Envoy configuration management tool.</p>
+            
+            <h2>Installation</h2>
+            
+            <div class="step">
+              <h3>1. Add the GPG key</h3>
+              <pre>sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://boniface.github.io/envoyctl/public.gpg \
+            | sudo gpg --dearmor -o /etc/apt/keyrings/envoyctl.gpg</pre>
+            </div>
+            
+            <div class="step">
+              <h3>2. Add the repository</h3>
+              <pre>echo "deb [signed-by=/etc/apt/keyrings/envoyctl.gpg] https://boniface.github.io/envoyctl stable main" \
+            | sudo tee /etc/apt/sources.list.d/envoyctl.list</pre>
+            </div>
+            
+            <div class="step">
+              <h3>3. Install</h3>
+              <pre>sudo apt update
+          sudo apt install envoyctl</pre>
+            </div>
+            
+            <h2>Repository Files</h2>
+            <ul>
+              <li><a href="public.gpg">public.gpg</a> - GPG public key</li>
+              <li><a href="dists/stable/Release">dists/stable/Release</a> - Release file</li>
+              <li><a href="dists/stable/main/binary-amd64/Packages">Packages</a> - Package list</li>
+            </ul>
+            
+            <h2>Links</h2>
+            <ul>
+              <li><a href="https://github.com/boniface/envoyctl">GitHub Repository</a></li>
+              <li><a href="https://github.com/boniface/envoyctl/releases">Releases</a></li>
+            </ul>
+          </body>
+          </html>
+          HTMLEOF
+        shell: bash
+
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:

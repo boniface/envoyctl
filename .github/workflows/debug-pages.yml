@@ -1,0 +1,81 @@
+name: Debug GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  debug-pages:
+    name: Debug & Deploy Test Page
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create test apt-repo
+        run: |
+          mkdir -p apt-repo/dists/stable/main/binary-amd64
+          mkdir -p apt-repo/pool/main/e/envoyctl
+          
+          # Create a test index.html
+          cat > apt-repo/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head><title>envoyctl APT Repo - Test</title></head>
+          <body>
+            <h1>envoyctl APT Repository</h1>
+            <p>If you can see this, GitHub Pages is working!</p>
+            <p>Deployed at: $(date)</p>
+            <h2>Files:</h2>
+            <ul>
+              <li><a href="public.gpg">public.gpg</a> (placeholder)</li>
+              <li><a href="dists/">dists/</a></li>
+            </ul>
+          </body>
+          </html>
+          EOF
+          
+          # Create placeholder files
+          echo "PLACEHOLDER - Run full release workflow to generate real files" > apt-repo/public.gpg
+          echo "PLACEHOLDER" > apt-repo/dists/stable/Release
+          echo "PLACEHOLDER" > apt-repo/dists/stable/main/binary-amd64/Packages
+          
+          echo "=== Test APT Repo Structure ==="
+          find apt-repo -type f
+        shell: bash
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: apt-repo
+          branch: gh-pages
+          clean: true
+          single-commit: true
+
+      - name: Output debug info
+        run: |
+          echo "============================================"
+          echo "DEPLOYMENT COMPLETE"
+          echo "============================================"
+          echo ""
+          echo "Check these URLs after a few minutes:"
+          echo "  - https://boniface.github.io/envoyctl/"
+          echo "  - https://boniface.github.io/envoyctl/index.html"
+          echo "  - https://boniface.github.io/envoyctl/public.gpg"
+          echo ""
+          echo "If you get 404, check:"
+          echo "  1. GitHub Pages is enabled in repo Settings > Pages"
+          echo "  2. Source is set to 'Deploy from a branch'"
+          echo "  3. Branch is set to 'gh-pages' and folder '/ (root)'"
+          echo "  4. The gh-pages branch exists"
+          echo ""
+          echo "To check gh-pages branch:"
+          echo "  git fetch origin gh-pages"
+          echo "  git log origin/gh-pages --oneline -5"
+          echo "============================================"
+
