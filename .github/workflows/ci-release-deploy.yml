@@ -152,33 +152,26 @@ jobs:
       - name: Import GPG key
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
-          # List imported keys for debugging
-          gpg --list-keys
 
       - name: Ensure apt-repo directory exists
         run: mkdir -p apt-repo
 
       - name: Export GPG public key
         run: |
-          # Export the first available key (the one we just imported)
           KEY_ID=$(gpg --list-keys --keyid-format SHORT | grep -E "^pub" | head -1 | awk '{print $2}' | cut -d'/' -f2)
-          echo "Exporting key: $KEY_ID"
           gpg --armor --export "$KEY_ID" > apt-repo/public.gpg
-          # Verify the file is not empty
           if [ ! -s apt-repo/public.gpg ]; then
             echo "ERROR: public.gpg is empty!"
             exit 1
           fi
-          echo "public.gpg created successfully ($(wc -c < apt-repo/public.gpg) bytes)"
 
       - name: Prepare APT repo
         env:
           RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
         run: |
-          find . -name '*.deb' -ls
           DEB=$(find . -name '*.deb' -print -quit)
           if [ ! -f "$DEB" ]; then
-            echo "No .deb file found at $DEB, aborting."
+            echo "No .deb file found, aborting."
             exit 1
           fi
           
@@ -216,8 +209,6 @@ jobs:
             dists/stable/Release
           
           cd ..
-          echo "=== APT Repo Structure ==="
-          find apt-repo -type f -exec ls -la {} \;
         shell: bash
 
       - name: Create index.html
