@@ -170,38 +170,32 @@ graph LR
 ## Directory Structure
 
 ```mermaid
-C4Component
-    title Directory Structure for envoyctl
-    Container_Boundary(workspace, "/var/lib/envoyctl/work/") {
-        Container(config, "config/", "Input: Configuration fragments")
-        Container_Boundary(common, "common/", "Shared settings") {
-            Component(admin, "admin.yaml", "YAML", "Admin interface config")
-            Component(defaults, "defaults.yaml", "YAML", "Global defaults")
-            Component(runtime, "runtime.yaml", "YAML", "Validation settings")
-            Component(access_log, "access_log.yaml", "YAML", "Logging configuration")
-        }
-        Container_Boundary(domains, "domains/", "Domain definitions") {
-            Component(domain_yaml, "*.yaml", "YAML", "One file per domain")
-        }
-        Container_Boundary(upstreams, "upstreams/", "Backend clusters") {
-            Component(upstream_yaml, "*.yaml", "YAML", "One file per upstream")
-        }
-        Container_Boundary(policies, "policies/", "Reusable policies") {
-            Component(headers, "headers.yaml", "YAML", "Header manipulation")
-            Component(ratelimits, "ratelimits.yaml", "YAML", "Rate limiting rules")
-            Component(retries, "retries.yaml", "YAML", "Retry policies")
-            Component(timeouts, "timeouts.yaml", "YAML", "Timeout configurations")
-        }
-        Container_Boundary(out, "out/", "Output: Generated config") {
-            Component(generated, "envoy.generated.yaml", "YAML", "Complete Envoy configuration")
-        }
-    }
-
-    Rel(config, common, "contains")
-    Rel(config, domains, "contains")
-    Rel(config, upstreams, "contains")
-    Rel(config, policies, "contains")
-    Rel(workspace, out, "contains")
+graph TD
+    subgraph "Workspace" ["/var/lib/envoyctl/work/"]
+        subgraph "config" ["config/ (Input: Configuration fragments)"]
+            subgraph "common" ["common/ (Shared settings)"]
+                A["admin.yaml<br/>(Admin interface config)"]
+                B["defaults.yaml<br/>(Global defaults)"]
+                C["runtime.yaml<br/>(Validation settings)"]
+                D["access_log.yaml<br/>(Logging configuration)"]
+            end
+            subgraph "domains" ["domains/ (Domain definitions)"]
+                E["*.yaml<br/>(One file per domain)"]
+            end
+            subgraph "upstreams" ["upstreams/ (Backend clusters)"]
+                F["*.yaml<br/>(One file per upstream)"]
+            end
+            subgraph "policies" ["policies/ (Reusable policies)"]
+                G["headers.yaml<br/>(Header manipulation)"]
+                H["ratelimits.yaml<br/>(Rate limiting rules)"]
+                I["retries.yaml<br/>(Retry policies)"]
+                J["timeouts.yaml<br/>(Timeout configurations)"]
+            end
+        end
+        subgraph "out" ["out/ (Output: Generated config)"]
+            K["envoy.generated.yaml<br/>(Complete Envoy configuration)"]
+        end
+    end
 ```
 
 ---
