@@ -152,13 +152,24 @@ jobs:
       - name: Import GPG key
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          # List imported keys for debugging
+          gpg --list-keys
 
       - name: Ensure apt-repo directory exists
         run: mkdir -p apt-repo
 
       - name: Export GPG public key
         run: |
-          gpg --export --armor > apt-repo/public.gpg
+          # Export the first available key (the one we just imported)
+          KEY_ID=$(gpg --list-keys --keyid-format SHORT | grep -E "^pub" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+          echo "Exporting key: $KEY_ID"
+          gpg --armor --export "$KEY_ID" > apt-repo/public.gpg
+          # Verify the file is not empty
+          if [ ! -s apt-repo/public.gpg ]; then
+            echo "ERROR: public.gpg is empty!"
+            exit 1
+          fi
+          echo "public.gpg created successfully ($(wc -c < apt-repo/public.gpg) bytes)"
 
       - name: Prepare APT repo
         run: |
@@ -179,16 +190,16 @@ jobs:
           gzip -kf dists/stable/main/binary-amd64/Packages
           
           cat > dists/stable/Release <<EOF
-          Origin: envoyctl
-          Label: envoyctl
-          Suite: stable
-          Codename: stable
-          Version: ${{ needs.build.outputs.release_tag }}
-          Architectures: amd64
-          Components: main
-          Description: Envoy configuration management tool
-          Date: $(date -Ru)
-          EOF
+Origin: envoyctl
+Label: envoyctl
+Suite: stable
+Codename: stable
+Version: ${{ needs.build.outputs.release_tag }}
+Architectures: amd64
+Components: main
+Description: Envoy configuration management tool
+Date: $(date -Ru)
+EOF
           
           apt-ftparchive release dists/stable >> dists/stable/Release
           
@@ -203,7 +214,8 @@ jobs:
             dists/stable/Release
           
           cd ..
-          tree -L 4 apt-repo || find apt-repo -type f
+          echo "=== APT Repo Structure ==="
+          find apt-repo -type f -exec ls -la {} \;
         shell: bash
 
       - name: Deploy to GitHub Pages
