@@ -1,0 +1,45 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: envoyctl
+Label: envoyctl
+Suite: stable
+Codename: stable
+Version: 0.0.3
+Architectures: amd64
+Components: main
+Description: Envoy configuration management tool
+Date: Sat, 27 Dec 2025 22:47:46 +0000
+Date: Sat, 27 Dec 2025 22:47:46 +0000
+MD5Sum:
+ 2a3180672f21ab166f115d1f5e687aec              242 Release
+ 7ea7cdc92112e1cc6df26e092b8e0c36              854 main/binary-amd64/Packages
+ 16c46f4bbba3bc3adc77ee653b0ee865              545 main/binary-amd64/Packages.gz
+SHA1:
+ f379ebf574414286cc2e86394b8dc0ff49b865f6              242 Release
+ 395518f99ef81ff29f8d3c7284330aac4fdc6235              854 main/binary-amd64/Packages
+ 1aad3d684f05fb0b708b106c0657eec883d69a53              545 main/binary-amd64/Packages.gz
+SHA256:
+ 2ad537ec3a052fdeaa24013d25baeac9f561af5835a090c2289718585c52d1c3              242 Release
+ 0adfe81fa86b4095eda4fe5812bf5cc80a36ec59ad97181d8ae85ebdf38f9cb8              854 main/binary-amd64/Packages
+ 76bc232a1e8ecc26fe473e834edd0cb8d55adf9fd513ca83e0deba92fe858ddc              545 main/binary-amd64/Packages.gz
+SHA512:
+ 1f31aba05c0cfd0a55152cadc32a39c202cc9c9afd7df15186f2dc17925aee2829504260d8df1d5f4f48ef19daa6db66077e29e91b6390bd5cc2dcd4bb3f71b5              242 Release
+ b479d3a25cba86c1c5093b6c9c53150740adc9709a97646643d7722cc9e8079ac71b95389b4fec225c60054acce9c84bad6c87d71efe729a0f0d5a90fbf6e050              854 main/binary-amd64/Packages
+ 0baac1072439b6a357f0833007ba977fda7a201a8b194605d4623a0f1d4ad7962e2ff0cf7d1d4259b0ce7234452dee444bcb376ab880304b88436e7f60259302              545 main/binary-amd64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEE7yBIg0ZV8AuL06xaH5OI59C6BjwFAmlQYhQACgkQH5OI59C6
+BjzfYw//fz4VnsCYk4+Nem3HJHUBHw1M/NTSy1NUfSPJmSNW1NzUabcIUOmos+3k
+QqBbnxlHKHcaI+iu2UR8PpOdeTxIGNA+ebucvnK+ERmfJ6BYfdbEo6TanneR+pxd
+zbreuwrobxN9hxPdGdZo5EIoFRNUUOhvZrx1nhNOYBkG3WTpcx2tnQMm5gacZWZr
+DoTul7M9+u3M09oO3oPY+/elPd54xQLcjA1CYj5f75bTfwyg+Z7yumOImrVI1f0u
+H5N2/v63TxMW8bNGLIHMIXE47HbYX0uRXw8AAVLOUO90UAc/AB18PqzmnPQrILQf
+UlvIE88hhc8sBgWh7WrW8LXkTB8z3BQv3IZ/w1HBL84HmxPmWj6JtORMxXgbaffR
+7MFx597uRUTcF+ZETviItYNAlPvdT8x7bcKxFfBAj+qdwm/DnjcDkDtw0GtCwUBC
+0/sGfp+GVBDFXegWOHmMZvG/MJTo6g4gJraF1hrx2c2zs3nF236xOchDhMbLY75o
+ZANjAnd4dqouyfi1uCV6IbCg//+ae0OWxPlE9ABdfuKLsUMkud7iGJqhas9qXiR3
+MUwJQkiThbgCs/ufzDmShxtIGr/lSCP/aiJ1D7CM1II7N3/ZeKEAHsgmlMNylkG4
+NtSqjdQhU3IakVwHxAJ5oYteN5lpdcdQglv+vjZDNCS20Evl5ww=
+=DNN1
+-----END PGP SIGNATURE-----

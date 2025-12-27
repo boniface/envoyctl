@@ -1,0 +1,21 @@
+Package: envoyctl
+Version: 0.0.3-1
+Architecture: amd64
+Maintainer: Boniface Kabaso <boniface@example.com>
+Installed-Size: 1515
+Depends: libc6 (>= 2.39)
+Filename: pool/main/e/envoyctl/envoyctl_0.0.3-1_amd64.deb
+Size: 545928
+MD5sum: 823f2dedbbccf0675adfd2824bd75b74
+SHA1: ba8424fcb29be7a5c91a14af68d1110d0a63170e
+SHA256: c559b75eb24bd0f4cc85d8e7dee044a1a092cf1b969a53203e87b9910db99c5f
+Section: admin
+Priority: optional
+Homepage: https://github.com/bonifacekabaso/envoyctl
+Description: Envoy configuration management tool - manage complex Envoy configs using simple
+ YAML fragments
+ envoyctl is a configuration management and deployment tool for Envoy Proxy. It
+ lets you manage complex Envoy configurations using small, focused YAML
+ fragments, validates the generated configuration using Envoy itself, and safely
+ applies changes via systemd or Docker.
+
