@@ -1,0 +1,218 @@
+name: Build • Release • Deploy APT Repo
+
+on:
+  release:
+    types:
+      - created
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+
+permissions:
+  contents: write
+  pages: write
+
+env:
+  GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+jobs:
+  build:
+    name: Build Debian package
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.setver.outputs.release_tag }}
+      deb_path: ${{ steps.package.outputs.deb_path }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Clean build artifacts
+        run: |
+          rm -rf target apt-repo ~/.cargo/registry ~/.cargo/git
+        shell: bash
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev gnupg
+        shell: bash
+
+      - name: Determine release tag
+        id: setver
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "release_tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "release_tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
+      - name: Update Cargo.toml version
+        run: |
+          TAG="${{ steps.setver.outputs.release_tag }}"
+          VERSION="${TAG#v}"
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+        shell: bash
+
+      - name: Build Debian package
+        id: package
+        run: |
+          cargo install cargo-deb --version 2.11.0 --force --locked
+          cargo deb
+          F=$(find target/debian -name '*.deb' -print -quit)
+          if [ -z "$F" ]; then
+            echo "No .deb file found!" >&2
+            exit 1
+          fi
+          echo "deb_path=$F" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: ${{ steps.package.outputs.deb_path }}
+
+  release:
+    name: Create GitHub release & upload .deb
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download .deb artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: deb-package
+
+      - name: Debug List .deb files
+        run: find . -name '*.deb' -ls
+
+      - name: Create release & upload .deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.build.outputs.release_tag }}"
+          DEB=$(find . -name '*.deb' -print -quit)
+          
+          echo "TAG=$TAG"
+          echo "DEB=$DEB"
+          
+          if [ ! -f "$DEB" ]; then
+            echo "No .deb file found at $DEB, skipping upload."
+            exit 0
+          fi
+          
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+          else
+            gh release create "$TAG" \
+              --title "Release $TAG" \
+              --notes "Automated release for envoyctl $TAG"
+          fi
+          
+          gh release upload "$TAG" "$DEB" --clobber
+        shell: bash
+
+  deploy:
+    name: Prepare & Deploy APT repo
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download .deb artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: deb-package
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+
+      - name: Ensure apt-repo directory exists
+        run: mkdir -p apt-repo
+
+      - name: Export GPG public key
+        run: |
+          gpg --export --armor > apt-repo/public.gpg
+
+      - name: Prepare APT repo
+        run: |
+          find . -name '*.deb' -ls
+          DEB=$(find . -name '*.deb' -print -quit)
+          if [ ! -f "$DEB" ]; then
+            echo "No .deb file found at $DEB, aborting."
+            exit 1
+          fi
+          
+          mkdir -p apt-repo/pool/main/e/envoyctl \
+                   apt-repo/dists/stable/main/binary-amd64
+          
+          cp "$DEB" apt-repo/pool/main/e/envoyctl/
+          
+          cd apt-repo
+          dpkg-scanpackages --arch amd64 pool > dists/stable/main/binary-amd64/Packages
+          gzip -kf dists/stable/main/binary-amd64/Packages
+          
+          cat > dists/stable/Release <<EOF
+          Origin: envoyctl
+          Label: envoyctl
+          Suite: stable
+          Codename: stable
+          Version: ${{ needs.build.outputs.release_tag }}
+          Architectures: amd64
+          Components: main
+          Description: Envoy configuration management tool
+          Date: $(date -Ru)
+          EOF
+          
+          apt-ftparchive release dists/stable >> dists/stable/Release
+          
+          echo "${GPG_PASSPHRASE}" \
+            | gpg --batch --passphrase-fd 0 --pinentry-mode loopback -abs \
+            -o dists/stable/Release.gpg \
+            dists/stable/Release
+          
+          echo "${GPG_PASSPHRASE}" \
+            | gpg --batch --passphrase-fd 0 --pinentry-mode loopback --clearsign \
+            -o dists/stable/InRelease \
+            dists/stable/Release
+          
+          cd ..
+          tree -L 4 apt-repo || find apt-repo -type f
+        shell: bash
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: apt-repo
+          target-folder: /
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: gh-pages
+          clean: true
+          single-commit: true
+

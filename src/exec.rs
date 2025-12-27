@@ -29,4 +29,3 @@ mod tests {
         assert!(run(&mut cmd).is_err());
     }
 }
-

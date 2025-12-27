@@ -1,11 +1,11 @@
-mod cli;
-mod init;
-mod model;
-mod load;
-mod validate;
-mod generate;
 mod apply;
+mod cli;
 mod exec;
+mod generate;
+mod init;
+mod load;
+mod model;
+mod validate;
 
 use anyhow::Result;
 use clap::Parser;

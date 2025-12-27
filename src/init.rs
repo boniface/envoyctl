@@ -29,28 +29,37 @@ pub fn cmd_init(_cli: &Cli, dir: &Path) -> Result<()> {
         candidates.push(PathBuf::from(manifest_dir).join("templates/workspace"));
     }
 
-    let src = candidates.iter()
+    let src = candidates
+        .iter()
         .map(|p| p.canonicalize().unwrap_or(p.clone()))
         .find(|p| p.exists())
         .context(format!(
             "could not find templates/workspace. Searched:\n  {}",
-            candidates.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n  ")
+            candidates
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join("\n  ")
         ))?;
 
     if dir.exists() {
         anyhow::bail!("target dir already exists: {}", dir.display());
     }
 
-    std::fs::create_dir_all(&dir)?;
+    std::fs::create_dir_all(dir)?;
 
     // Copy contents of workspace folder, not the folder itself
     let mut opts = CopyOptions::new();
     opts.overwrite = false;
-    opts.content_only = true;  // Copy only contents, not the source folder
+    opts.content_only = true; // Copy only contents, not the source folder
 
-    copy_dir(&src, &dir, &opts).with_context(|| format!("copy {} -> {}", src.display(), dir.display()))?;
+    copy_dir(&src, dir, &opts)
+        .with_context(|| format!("copy {} -> {}", src.display(), dir.display()))?;
 
     println!("Workspace created at {}", dir.display());
-    println!("Next:\n  cd {}\n  envoyctl validate --config-dir ./config --out-dir ./out\n", dir.display());
+    println!(
+        "Next:\n  cd {}\n  envoyctl validate --config-dir ./config --out-dir ./out\n",
+        dir.display()
+    );
     Ok(())
 }

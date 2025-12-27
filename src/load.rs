@@ -1,6 +1,9 @@
 use crate::model::*;
 use anyhow::{Context, Result};
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use walkdir::WalkDir;
 
 pub struct Loaded {
@@ -32,10 +35,10 @@ pub fn load_all(config_dir: &Path) -> Result<Loaded> {
         admin,
         defaults,
         access_log,
-        validate: runtime.validate,  // Extract validate from runtime
+        validate: runtime.validate, // Extract validate from runtime
         domains,
         upstreams,
-        policies
+        policies,
     })
 }
 
@@ -52,9 +55,13 @@ fn read_dir_yaml<T: serde::de::DeserializeOwned>(dir: &Path) -> Result<Vec<T>> {
     }
     for e in WalkDir::new(dir).min_depth(1).max_depth(1) {
         let e = e?;
-        if !e.file_type().is_file() { continue; }
+        if !e.file_type().is_file() {
+            continue;
+        }
         let p = e.path();
-        if !matches!(p.extension().and_then(|x| x.to_str()), Some("yaml" | "yml")) { continue; }
+        if !matches!(p.extension().and_then(|x| x.to_str()), Some("yaml" | "yml")) {
+            continue;
+        }
         let s = std::fs::read_to_string(p)?;
         let v = serde_yaml::from_str(&s).with_context(|| format!("parse {}", p.display()))?;
         out.push(v);
@@ -69,10 +76,19 @@ fn try_read_dir_yaml<T: serde::de::DeserializeOwned>(dir: &Path) -> Vec<T> {
     if !dir.exists() {
         return out;
     }
-    for e in WalkDir::new(dir).min_depth(1).max_depth(1).into_iter().flatten() {
-        if !e.file_type().is_file() { continue; }
+    for e in WalkDir::new(dir)
+        .min_depth(1)
+        .max_depth(1)
+        .into_iter()
+        .flatten()
+    {
+        if !e.file_type().is_file() {
+            continue;
+        }
         let p = e.path();
-        if !matches!(p.extension().and_then(|x| x.to_str()), Some("yaml" | "yml")) { continue; }
+        if !matches!(p.extension().and_then(|x| x.to_str()), Some("yaml" | "yml")) {
+            continue;
+        }
         if let Ok(s) = std::fs::read_to_string(p) {
             if let Ok(v) = serde_yaml::from_str(&s) {
                 out.push(v);
@@ -129,8 +145,16 @@ port: 9000
         fs::create_dir(&yaml_dir).unwrap();
 
         // Create test YAML files
-        fs::write(yaml_dir.join("file1.yaml"), "address: \"127.0.0.1\"\nport: 9000").unwrap();
-        fs::write(yaml_dir.join("file2.yaml"), "address: \"192.168.1.1\"\nport: 8080").unwrap();
+        fs::write(
+            yaml_dir.join("file1.yaml"),
+            "address: \"127.0.0.1\"\nport: 9000",
+        )
+        .unwrap();
+        fs::write(
+            yaml_dir.join("file2.yaml"),
+            "address: \"192.168.1.1\"\nport: 8080",
+        )
+        .unwrap();
 
         let result: Result<Vec<AdminSpec>, _> = read_dir_yaml(&yaml_dir);
         assert!(result.is_ok());
@@ -138,8 +162,12 @@ port: 9000
         assert_eq!(specs.len(), 2);
 
         // Check that we can access the data
-        assert!(specs.iter().any(|s| s.address == "127.0.0.1" && s.port == 9000));
-        assert!(specs.iter().any(|s| s.address == "192.168.1.1" && s.port == 8080));
+        assert!(specs
+            .iter()
+            .any(|s| s.address == "127.0.0.1" && s.port == 9000));
+        assert!(specs
+            .iter()
+            .any(|s| s.address == "192.168.1.1" && s.port == 8080));
     }
 
     #[test]
@@ -149,8 +177,16 @@ port: 9000
         fs::create_dir(&yaml_dir).unwrap();
 
         // Create YAML and non-YAML files
-        fs::write(yaml_dir.join("file1.yaml"), "address: \"127.0.0.1\"\nport: 9000").unwrap();
-        fs::write(yaml_dir.join("file2.yml"), "address: \"192.168.1.1\"\nport: 8080").unwrap();
+        fs::write(
+            yaml_dir.join("file1.yaml"),
+            "address: \"127.0.0.1\"\nport: 9000",
+        )
+        .unwrap();
+        fs::write(
+            yaml_dir.join("file2.yml"),
+            "address: \"192.168.1.1\"\nport: 8080",
+        )
+        .unwrap();
         fs::write(yaml_dir.join("file3.txt"), "this should be ignored").unwrap();
         fs::write(yaml_dir.join("file4.json"), "this should be ignored too").unwrap();
 
@@ -160,8 +196,12 @@ port: 9000
         assert_eq!(specs.len(), 2); // Only .yaml and .yml files should be processed
 
         // Check that we can access the data
-        assert!(specs.iter().any(|s| s.address == "127.0.0.1" && s.port == 9000));
-        assert!(specs.iter().any(|s| s.address == "192.168.1.1" && s.port == 8080));
+        assert!(specs
+            .iter()
+            .any(|s| s.address == "127.0.0.1" && s.port == 9000));
+        assert!(specs
+            .iter()
+            .any(|s| s.address == "192.168.1.1" && s.port == 8080));
     }
 
     #[test]
@@ -175,15 +215,31 @@ port: 9000
         fs::create_dir_all(config_dir.join("policies")).unwrap();
 
         // Write common config files
-        fs::write(config_dir.join("common/admin.yaml"), "address: \"0.0.0.0\"\nport: 9901").unwrap();
-        fs::write(config_dir.join("common/defaults.yaml"), "route_timeout: \"60s\"").unwrap();
-        fs::write(config_dir.join("common/access_log.yaml"), "type: \"stdout\"\npath: \"/dev/stdout\"").unwrap();
-        fs::write(config_dir.join("common/runtime.yaml"), r#"validate:
+        fs::write(
+            config_dir.join("common/admin.yaml"),
+            "address: \"0.0.0.0\"\nport: 9901",
+        )
+        .unwrap();
+        fs::write(
+            config_dir.join("common/defaults.yaml"),
+            "route_timeout: \"60s\"",
+        )
+        .unwrap();
+        fs::write(
+            config_dir.join("common/access_log.yaml"),
+            "type: \"stdout\"\npath: \"/dev/stdout\"",
+        )
+        .unwrap();
+        fs::write(
+            config_dir.join("common/runtime.yaml"),
+            r#"validate:
   type: "native"
   user: "envoy"
   bin: "envoy"
   config_path: "/etc/envoy/envoy.yaml"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Write policies file
         fs::write(config_dir.join("policies/ratelimits.yaml"), "").unwrap();

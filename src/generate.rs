@@ -12,7 +12,12 @@ pub fn generate_envoy_yaml(loaded: &crate::load::Loaded) -> Result<Value> {
     let mut static_resources = Mapping::new();
     static_resources.insert(
         s("listeners"),
-        gen_listeners(&loaded.defaults, &loaded.access_log, &loaded.domains, &loaded.policies),
+        gen_listeners(
+            &loaded.defaults,
+            &loaded.access_log,
+            &loaded.domains,
+            &loaded.policies,
+        ),
     );
     static_resources.insert(s("clusters"), gen_clusters(&loaded.upstreams));
 
@@ -27,16 +32,20 @@ fn gen_admin(admin: &AdminSpec, log: &AccessLogSpec) -> Value {
     Value::Mapping(m)
 }
 
-fn gen_listeners(defaults: &DefaultsSpec, log: &AccessLogSpec, domains: &[DomainSpec], policies: &PoliciesSpec) -> Value {
-    let mut listeners = Vec::new();
-
+fn gen_listeners(
+    defaults: &DefaultsSpec,
+    log: &AccessLogSpec,
+    domains: &[DomainSpec],
+    policies: &PoliciesSpec,
+) -> Value {
     // :80 HTTP -> defaults.http_default_upstream
-    listeners.push(Value::Mapping(gen_http_80_listener(defaults, log)));
-
     // :443 TLS inspector + SNI split:
     // - terminate for domains with mode terminate_https_443
     // - default passthrough -> defaults.tls_passthrough_upstream
-    listeners.push(Value::Mapping(gen_https_443_sni_listener(defaults, log, domains, policies)));
+    let listeners = vec![
+        Value::Mapping(gen_http_80_listener(defaults, log)),
+        Value::Mapping(gen_https_443_sni_listener(defaults, log, domains, policies)),
+    ];
 
     Value::Sequence(listeners)
 }
@@ -53,17 +62,30 @@ fn gen_http_80_listener(defaults: &DefaultsSpec, log: &AccessLogSpec) -> Mapping
             "external_http_route",
             "all_hosts",
             vec!["*"],
-            vec![route_prefix_to_cluster("/", &defaults.http_default_upstream, Some(defaults.route_timeout.clone()), None)],
+            vec![route_prefix_to_cluster(
+                "/",
+                &defaults.http_default_upstream,
+                Some(defaults.route_timeout.clone()),
+                None,
+            )],
         ),
         vec![http_filter_router()],
     );
 
     let filter_chain = filter_chain_http(hcm);
-    listener.insert(s("filter_chains"), Value::Sequence(vec![Value::Mapping(filter_chain)]));
+    listener.insert(
+        s("filter_chains"),
+        Value::Sequence(vec![Value::Mapping(filter_chain)]),
+    );
     listener
 }
 
-fn gen_https_443_sni_listener(defaults: &DefaultsSpec, log: &AccessLogSpec, domains: &[DomainSpec], policies: &PoliciesSpec) -> Mapping {
+fn gen_https_443_sni_listener(
+    defaults: &DefaultsSpec,
+    log: &AccessLogSpec,
+    domains: &[DomainSpec],
+    policies: &PoliciesSpec,
+) -> Mapping {
     let mut listener = Mapping::new();
     listener.insert(s("name"), s("https_sni_listener"));
     listener.insert(s("address"), socket_addr("TCP", "0.0.0.0", 443));
@@ -104,7 +126,12 @@ fn gen_https_443_sni_listener(defaults: &DefaultsSpec, log: &AccessLogSpec, doma
 
         // HCM routes for this domain
         let mut routes = Vec::new();
-        let any_route_uses_rl = d.routes.iter().any(|r| r.per_filter_config.as_ref().and_then(|p| p.local_ratelimit.as_ref()).is_some());
+        let any_route_uses_rl = d.routes.iter().any(|r| {
+            r.per_filter_config
+                .as_ref()
+                .and_then(|p| p.local_ratelimit.as_ref())
+                .is_some()
+        });
 
         for r in &d.routes {
             routes.push(route_from_spec(r, defaults, policies));
@@ -133,12 +160,18 @@ fn gen_https_443_sni_listener(defaults: &DefaultsSpec, log: &AccessLogSpec, doma
             http_filters,
         );
 
-        fc.insert(s("filters"), Value::Sequence(vec![Value::Mapping({
-            let mut f = Mapping::new();
-            f.insert(s("name"), s("envoy.filters.network.http_connection_manager"));
-            f.insert(s("typed_config"), hcm);
-            f
-        })]));
+        fc.insert(
+            s("filters"),
+            Value::Sequence(vec![Value::Mapping({
+                let mut f = Mapping::new();
+                f.insert(
+                    s("name"),
+                    s("envoy.filters.network.http_connection_manager"),
+                );
+                f.insert(s("typed_config"), hcm);
+                f
+            })]),
+        );
 
         filter_chains.push(Value::Mapping(fc));
     }
@@ -146,10 +179,13 @@ fn gen_https_443_sni_listener(defaults: &DefaultsSpec, log: &AccessLogSpec, doma
     // default passthrough chain -> tcp_proxy to defaults.tls_passthrough_upstream
     filter_chains.push(Value::Mapping({
         let mut fc = Mapping::new();
-        fc.insert(s("filters"), Value::Sequence(vec![Value::Mapping(tcp_proxy_filter(
-            "external_tls_passthrough",
-            &defaults.tls_passthrough_upstream,
-        ))]));
+        fc.insert(
+            s("filters"),
+            Value::Sequence(vec![Value::Mapping(tcp_proxy_filter(
+                "external_tls_passthrough",
+                &defaults.tls_passthrough_upstream,
+            ))]),
+        );
         fc
     }));
 
@@ -215,7 +251,11 @@ fn gen_clusters(upstreams: &[UpstreamSpec]) -> Value {
     let mut ups: Vec<_> = upstreams.iter().collect();
     ups.sort_by(|a, b| a.name.cmp(&b.name));
 
-    Value::Sequence(ups.into_iter().map(|u| Value::Mapping(gen_cluster(u))).collect())
+    Value::Sequence(
+        ups.into_iter()
+            .map(|u| Value::Mapping(gen_cluster(u)))
+            .collect(),
+    )
 }
 
 fn gen_cluster(u: &UpstreamSpec) -> Mapping {
@@ -235,19 +275,25 @@ fn gen_cluster(u: &UpstreamSpec) -> Mapping {
     let mut lb_eps = Vec::new();
     for ep in &u.endpoints {
         let mut e = Mapping::new();
-        e.insert(s("endpoint"), Value::Mapping({
-            let mut endpoint = Mapping::new();
-            endpoint.insert(s("address"), socket_addr("TCP", &ep.address, ep.port));
-            endpoint
-        }));
+        e.insert(
+            s("endpoint"),
+            Value::Mapping({
+                let mut endpoint = Mapping::new();
+                endpoint.insert(s("address"), socket_addr("TCP", &ep.address, ep.port));
+                endpoint
+            }),
+        );
         lb_eps.push(Value::Mapping(e));
     }
 
-    load_assignment.insert(s("endpoints"), Value::Sequence(vec![Value::Mapping({
-        let mut e = Mapping::new();
-        e.insert(s("lb_endpoints"), Value::Sequence(lb_eps));
-        e
-    })]));
+    load_assignment.insert(
+        s("endpoints"),
+        Value::Sequence(vec![Value::Mapping({
+            let mut e = Mapping::new();
+            e.insert(s("lb_endpoints"), Value::Sequence(lb_eps));
+            e
+        })]),
+    );
 
     m.insert(s("load_assignment"), Value::Mapping(load_assignment));
     m
@@ -255,7 +301,12 @@ fn gen_cluster(u: &UpstreamSpec) -> Mapping {
 
 /* ---------------- building blocks ---------------- */
 
-fn http_connection_manager(stat_prefix: &str, log: &AccessLogSpec, route_config: Value, http_filters: Vec<Value>) -> Value {
+fn http_connection_manager(
+    stat_prefix: &str,
+    log: &AccessLogSpec,
+    route_config: Value,
+    http_filters: Vec<Value>,
+) -> Value {
     let mut hcm = Mapping::new();
     hcm.insert(s("@type"), s("type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager"));
     hcm.insert(s("stat_prefix"), s(stat_prefix));
@@ -267,35 +318,57 @@ fn http_connection_manager(stat_prefix: &str, log: &AccessLogSpec, route_config:
     Value::Mapping(hcm)
 }
 
-fn route_config_single_vhost(name: impl Into<String>, vhost_name: impl Into<String>, domains: Vec<&str>, routes: Vec<Value>) -> Value {
+fn route_config_single_vhost(
+    name: impl Into<String>,
+    vhost_name: impl Into<String>,
+    domains: Vec<&str>,
+    routes: Vec<Value>,
+) -> Value {
     let mut rc = Mapping::new();
     rc.insert(s("name"), s(name.into()));
-    rc.insert(s("virtual_hosts"), Value::Sequence(vec![Value::Mapping({
-        let mut vh = Mapping::new();
-        vh.insert(s("name"), s(vhost_name.into()));
-        vh.insert(s("domains"), Value::Sequence(domains.into_iter().map(s).collect()));
-        vh.insert(s("routes"), Value::Sequence(routes));
-        vh
-    })]));
+    rc.insert(
+        s("virtual_hosts"),
+        Value::Sequence(vec![Value::Mapping({
+            let mut vh = Mapping::new();
+            vh.insert(s("name"), s(vhost_name.into()));
+            vh.insert(
+                s("domains"),
+                Value::Sequence(domains.into_iter().map(s).collect()),
+            );
+            vh.insert(s("routes"), Value::Sequence(routes));
+            vh
+        })]),
+    );
     Value::Mapping(rc)
 }
 
-fn route_prefix_to_cluster(prefix: &str, cluster: &str, timeout: Option<String>, _unused: Option<()>) -> Value {
+fn route_prefix_to_cluster(
+    prefix: &str,
+    cluster: &str,
+    timeout: Option<String>,
+    _unused: Option<()>,
+) -> Value {
     let mut route = Mapping::new();
-    route.insert(s("match"), Value::Mapping({
-        let mut m = Mapping::new();
-        m.insert(s("prefix"), s(prefix));
-        m
-    }));
+    route.insert(
+        s("match"),
+        Value::Mapping({
+            let mut m = Mapping::new();
+            m.insert(s("prefix"), s(prefix));
+            m
+        }),
+    );
 
-    route.insert(s("route"), Value::Mapping({
-        let mut r = Mapping::new();
-        r.insert(s("cluster"), s(cluster));
-        if let Some(t) = timeout {
-            r.insert(s("timeout"), s(t));
-        }
-        r
-    }));
+    route.insert(
+        s("route"),
+        Value::Mapping({
+            let mut r = Mapping::new();
+            r.insert(s("cluster"), s(cluster));
+            if let Some(t) = timeout {
+                r.insert(s("timeout"), s(t));
+            }
+            r
+        }),
+    );
 
     Value::Mapping(route)
 }
@@ -304,11 +377,17 @@ fn http_filter_router() -> Value {
     Value::Mapping({
         let mut f = Mapping::new();
         f.insert(s("name"), s("envoy.filters.http.router"));
-        f.insert(s("typed_config"), Value::Mapping({
-            let mut tc = Mapping::new();
-            tc.insert(s("@type"), s("type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"));
-            tc
-        }));
+        f.insert(
+            s("typed_config"),
+            Value::Mapping({
+                let mut tc = Mapping::new();
+                tc.insert(
+                    s("@type"),
+                    s("type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"),
+                );
+                tc
+            }),
+        );
         f
     })
 }
@@ -330,24 +409,36 @@ fn http_filter_local_ratelimit_default() -> Value {
 fn tcp_proxy_filter(stat_prefix: &str, cluster: &str) -> Mapping {
     let mut f = Mapping::new();
     f.insert(s("name"), s("envoy.filters.network.tcp_proxy"));
-    f.insert(s("typed_config"), Value::Mapping({
-        let mut tc = Mapping::new();
-        tc.insert(s("@type"), s("type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy"));
-        tc.insert(s("stat_prefix"), s(stat_prefix));
-        tc.insert(s("cluster"), s(cluster));
-        tc
-    }));
+    f.insert(
+        s("typed_config"),
+        Value::Mapping({
+            let mut tc = Mapping::new();
+            tc.insert(
+                s("@type"),
+                s("type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy"),
+            );
+            tc.insert(s("stat_prefix"), s(stat_prefix));
+            tc.insert(s("cluster"), s(cluster));
+            tc
+        }),
+    );
     f
 }
 
 fn filter_chain_http(hcm_typed_config: Value) -> Mapping {
     let mut fc = Mapping::new();
-    fc.insert(s("filters"), Value::Sequence(vec![Value::Mapping({
-        let mut f = Mapping::new();
-        f.insert(s("name"), s("envoy.filters.network.http_connection_manager"));
-        f.insert(s("typed_config"), hcm_typed_config);
-        f
-    })]));
+    fc.insert(
+        s("filters"),
+        Value::Sequence(vec![Value::Mapping({
+            let mut f = Mapping::new();
+            f.insert(
+                s("name"),
+                s("envoy.filters.network.http_connection_manager"),
+            );
+            f.insert(s("typed_config"), hcm_typed_config);
+            f
+        })]),
+    );
     fc
 }
 
@@ -385,13 +476,16 @@ fn downstream_tls_socket(tls: &TlsSpec) -> Value {
 fn socket_addr(protocol: &str, address: &str, port: u16) -> Value {
     Value::Mapping({
         let mut a = Mapping::new();
-        a.insert(s("socket_address"), Value::Mapping({
-            let mut sa = Mapping::new();
-            sa.insert(s("protocol"), s(protocol));
-            sa.insert(s("address"), s(address));
-            sa.insert(s("port_value"), n(port));
-            sa
-        }));
+        a.insert(
+            s("socket_address"),
+            Value::Mapping({
+                let mut sa = Mapping::new();
+                sa.insert(s("protocol"), s(protocol));
+                sa.insert(s("address"), s(address));
+                sa.insert(s("port_value"), n(port));
+                sa
+            }),
+        );
         a
     })
 }
@@ -400,25 +494,38 @@ fn stdout_access_log(log: &AccessLogSpec) -> Value {
     // Initial draft supports stdout file logger
     let mut entry = Mapping::new();
     entry.insert(s("name"), s("envoy.access_loggers.file"));
-    entry.insert(s("typed_config"), Value::Mapping({
-        let mut tc = Mapping::new();
-        tc.insert(s("@type"), s("type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog"));
-        tc.insert(s("path"), s(&log.path));
-        tc
-    }));
+    entry.insert(
+        s("typed_config"),
+        Value::Mapping({
+            let mut tc = Mapping::new();
+            tc.insert(
+                s("@type"),
+                s("type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog"),
+            );
+            tc.insert(s("path"), s(&log.path));
+            tc
+        }),
+    );
     Value::Sequence(vec![Value::Mapping(entry)])
 }
 
 fn sanitize_name(domain: &str) -> String {
-    domain.chars()
+    domain
+        .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect()
 }
 
 /* helpers */
-fn s<T: Into<String>>(x: T) -> Value { Value::String(x.into()) }
-fn n<T: Into<u64>>(x: T) -> Value { Value::Number(serde_yaml::Number::from(x.into())) }
-fn b(x: bool) -> Value { Value::Bool(x) }
+fn s<T: Into<String>>(x: T) -> Value {
+    Value::String(x.into())
+}
+fn n<T: Into<u64>>(x: T) -> Value {
+    Value::Number(serde_yaml::Number::from(x.into()))
+}
+fn b(x: bool) -> Value {
+    Value::Bool(x)
+}
 
 #[cfg(test)]
 mod tests {
@@ -428,7 +535,10 @@ mod tests {
     #[test]
     fn test_sanitize_name() {
         assert_eq!(sanitize_name("example.com"), "example_com");
-        assert_eq!(sanitize_name("api-test.example.com"), "api_test_example_com");
+        assert_eq!(
+            sanitize_name("api-test.example.com"),
+            "api_test_example_com"
+        );
         assert_eq!(sanitize_name("simple"), "simple");
         assert_eq!(sanitize_name("123.456.789"), "123_456_789");
     }
@@ -441,9 +551,18 @@ mod tests {
                 let socket_addr = m.get(&Value::String("socket_address".to_string())).unwrap();
                 match socket_addr {
                     Value::Mapping(sa) => {
-                        assert_eq!(sa.get(&Value::String("protocol".to_string())).unwrap(), &Value::String("TCP".to_string()));
-                        assert_eq!(sa.get(&Value::String("address".to_string())).unwrap(), &Value::String("127.0.0.1".to_string()));
-                        assert_eq!(sa.get(&Value::String("port_value".to_string())).unwrap(), &Value::Number(8080.into()));
+                        assert_eq!(
+                            sa.get(&Value::String("protocol".to_string())).unwrap(),
+                            &Value::String("TCP".to_string())
+                        );
+                        assert_eq!(
+                            sa.get(&Value::String("address".to_string())).unwrap(),
+                            &Value::String("127.0.0.1".to_string())
+                        );
+                        assert_eq!(
+                            sa.get(&Value::String("port_value".to_string())).unwrap(),
+                            &Value::Number(8080.into())
+                        );
                     }
                     _ => panic!("Expected mapping for socket_address"),
                 }
@@ -540,24 +659,23 @@ mod tests {
                 bin: "envoy".to_string(),
                 config_path: "/etc/envoy/envoy.yaml".to_string(),
             },
-            domains: vec![
-                DomainSpec {
-                    domain: "example.com".to_string(),
-                    mode: "terminate_https_443".to_string(),
-                    tls: Some(TlsSpec {
-                        cert_chain: "/path/to/cert".to_string(),
-                        private_key: "/path/to/key".to_string(),
-                    }),
-                    routes: vec![
-                        RouteSpec {
-                            m: MatchSpec { prefix: Some("/api".to_string()), path: None },
-                            to_upstream: "api_backend".to_string(),
-                            timeout: Some("30s".to_string()),
-                            per_filter_config: None,
-                        }
-                    ],
-                }
-            ],
+            domains: vec![DomainSpec {
+                domain: "example.com".to_string(),
+                mode: "terminate_https_443".to_string(),
+                tls: Some(TlsSpec {
+                    cert_chain: "/path/to/cert".to_string(),
+                    private_key: "/path/to/key".to_string(),
+                }),
+                routes: vec![RouteSpec {
+                    m: MatchSpec {
+                        prefix: Some("/api".to_string()),
+                        path: None,
+                    },
+                    to_upstream: "api_backend".to_string(),
+                    timeout: Some("30s".to_string()),
+                    per_filter_config: None,
+                }],
+            }],
             upstreams: vec![
                 UpstreamSpec {
                     name: "api_backend".to_string(),
@@ -609,7 +727,9 @@ mod tests {
                 assert!(m.contains_key(&Value::String("static_resources".to_string())));
 
                 // Check static_resources structure
-                let static_resources = m.get(&Value::String("static_resources".to_string())).unwrap();
+                let static_resources = m
+                    .get(&Value::String("static_resources".to_string()))
+                    .unwrap();
                 match static_resources {
                     Value::Mapping(sr) => {
                         assert!(sr.contains_key(&Value::String("listeners".to_string())));
@@ -625,21 +745,33 @@ mod tests {
     #[test]
     fn test_match_to_value() {
         // Test prefix match
-        let prefix_match = MatchSpec { prefix: Some("/api".to_string()), path: None };
+        let prefix_match = MatchSpec {
+            prefix: Some("/api".to_string()),
+            path: None,
+        };
         let result = match_to_value(&prefix_match);
         match &result {
             Value::Mapping(m) => {
-                assert_eq!(m.get(&Value::String("prefix".to_string())).unwrap(), &Value::String("/api".to_string()));
+                assert_eq!(
+                    m.get(&Value::String("prefix".to_string())).unwrap(),
+                    &Value::String("/api".to_string())
+                );
             }
             _ => panic!("Expected mapping for match"),
         }
 
         // Test path match
-        let path_match = MatchSpec { prefix: None, path: Some("/exact/path".to_string()) };
+        let path_match = MatchSpec {
+            prefix: None,
+            path: Some("/exact/path".to_string()),
+        };
         let result = match_to_value(&path_match);
         match &result {
             Value::Mapping(m) => {
-                assert_eq!(m.get(&Value::String("path".to_string())).unwrap(), &Value::String("/exact/path".to_string()));
+                assert_eq!(
+                    m.get(&Value::String("path".to_string())).unwrap(),
+                    &Value::String("/exact/path".to_string())
+                );
             }
             _ => panic!("Expected mapping for match"),
         }

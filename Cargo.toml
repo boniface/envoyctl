@@ -1,8 +1,14 @@
 [package]
 name = "envoyctl"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 license = "MIT"
+description = "Envoy configuration management tool - manage complex Envoy configs using simple YAML fragments"
+authors = ["Boniface Kabaso"]
+repository = "https://github.com/bonifacekabaso/envoyctl"
+readme = "README.md"
+keywords = ["envoy", "proxy", "configuration", "devops", "infrastructure"]
+categories = ["command-line-utilities", "config", "development-tools"]
 
 [lib]
 name = "envoyctl"
@@ -27,4 +33,33 @@ path = "src/main.rs"
 [profile.release]
 lto = true
 codegen-units = 1
+
+# Debian package metadata for cargo-deb
+[package.metadata.deb]
+maintainer = "Boniface Kabaso <boniface@example.com>"
+copyright = "2025, Boniface Kabaso"
+license-file = ["LICENSE", "0"]
+extended-description = """\
+envoyctl is a configuration management and deployment tool for Envoy Proxy. \
+It lets you manage complex Envoy configurations using small, focused YAML fragments, \
+validates the generated configuration using Envoy itself, and safely applies changes \
+via systemd or Docker."""
+section = "admin"
+priority = "optional"
+depends = "$auto"
+assets = [
+    # Binary
+    ["target/release/envoyctl", "usr/bin/", "755"],
+    # Templates
+    ["templates/workspace/**/*", "usr/share/envoyctl/templates/workspace/", "644"],
+    # Documentation
+    ["README.md", "usr/share/doc/envoyctl/", "644"],
+    ["docs/*.md", "usr/share/doc/envoyctl/docs/", "644"],
+]
+conf-files = ["/etc/default/envoyctl"]
+
+# systemd service files
+maintainer-scripts = "debian/"
+systemd-units = { enable = false }
+
 

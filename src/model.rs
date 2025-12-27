@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use indexmap::IndexMap;
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct AdminSpec {
@@ -8,8 +8,12 @@ pub struct AdminSpec {
     #[serde(default = "default_admin_port")]
     pub port: u16,
 }
-fn default_admin_address() -> String { "0.0.0.0".into() }
-fn default_admin_port() -> u16 { 9901 }
+fn default_admin_address() -> String {
+    "0.0.0.0".into()
+}
+fn default_admin_port() -> u16 {
+    9901
+}
 
 #[derive(Debug, Deserialize)]
 pub struct DefaultsSpec {
@@ -24,9 +28,15 @@ pub struct DefaultsSpec {
     #[serde(default = "default_tls_passthrough_upstream")]
     pub tls_passthrough_upstream: String,
 }
-fn default_route_timeout() -> String { "60s".into() }
-fn default_http_upstream() -> String { "cilium_http".into() }
-fn default_tls_passthrough_upstream() -> String { "cilium_tls".into() }
+fn default_route_timeout() -> String {
+    "60s".into()
+}
+fn default_http_upstream() -> String {
+    "cilium_http".into()
+}
+fn default_tls_passthrough_upstream() -> String {
+    "cilium_tls".into()
+}
 
 #[derive(Debug, Deserialize)]
 pub struct AccessLogSpec {
@@ -37,8 +47,12 @@ pub struct AccessLogSpec {
     #[serde(default = "default_log_path")]
     pub path: String,
 }
-fn default_log_type() -> String { "stdout".into() }
-fn default_log_path() -> String { "/dev/stdout".into() }
+fn default_log_type() -> String {
+    "stdout".into()
+}
+fn default_log_path() -> String {
+    "/dev/stdout".into()
+}
 
 #[derive(Debug, Deserialize)]
 pub struct RuntimeSpec {
@@ -47,11 +61,11 @@ pub struct RuntimeSpec {
 
 /// Validation mode for checking Envoy configuration
 #[derive(Debug, Deserialize)]
-#[serde(tag="type")]
+#[serde(tag = "type")]
 pub enum ValidateSpec {
     /// Validate using docker exec on a running container
     /// Command: docker exec -it <container> envoy --mode validate -c <config_path>
-    #[serde(rename="docker_exec")]
+    #[serde(rename = "docker_exec")]
     DockerExec {
         /// Name of the running Envoy container
         container: String,
@@ -62,7 +76,7 @@ pub enum ValidateSpec {
 
     /// Validate on baremetal using sudo
     /// Command: sudo -u envoy envoy --mode validate -c <config_path>
-    #[serde(rename="native")]
+    #[serde(rename = "native")]
     Native {
         /// User to run envoy as (default: envoy)
         #[serde(default = "default_envoy_user")]
@@ -77,14 +91,22 @@ pub enum ValidateSpec {
 
     /// Validate using docker run with a fresh container (for testing)
     /// Command: docker run --rm -v <config>:/cfg.yaml:ro <image> envoy --mode validate -c /cfg.yaml
-    #[serde(rename="docker_image")]
+    #[serde(rename = "docker_image")]
     DockerImage { image: String },
 }
 
-fn default_container_config_path() -> String { "/etc/envoy/envoy.yaml".into() }
-fn default_envoy_user() -> String { "envoy".into() }
-fn default_envoy_bin() -> String { "envoy".into() }
-fn default_native_config_path() -> String { "/etc/envoy/envoy.yaml".into() }
+fn default_container_config_path() -> String {
+    "/etc/envoy/envoy.yaml".into()
+}
+fn default_envoy_user() -> String {
+    "envoy".into()
+}
+fn default_envoy_bin() -> String {
+    "envoy".into()
+}
+fn default_native_config_path() -> String {
+    "/etc/envoy/envoy.yaml".into()
+}
 
 #[derive(Debug, Deserialize)]
 pub struct UpstreamSpec {
@@ -100,9 +122,15 @@ pub struct UpstreamSpec {
     #[serde(default)]
     pub http2: bool,
 }
-fn default_connect_timeout() -> String { "5s".into() }
-fn default_cluster_type() -> String { "STRICT_DNS".into() }
-fn default_lb_policy() -> String { "ROUND_ROBIN".into() }
+fn default_connect_timeout() -> String {
+    "5s".into()
+}
+fn default_cluster_type() -> String {
+    "STRICT_DNS".into()
+}
+fn default_lb_policy() -> String {
+    "ROUND_ROBIN".into()
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Endpoint {
@@ -121,7 +149,9 @@ pub struct DomainSpec {
     pub tls: Option<TlsSpec>,
     pub routes: Vec<RouteSpec>,
 }
-fn default_mode() -> String { "terminate_https_443".into() }
+fn default_mode() -> String {
+    "terminate_https_443".into()
+}
 
 #[derive(Debug, Deserialize)]
 pub struct TlsSpec {
@@ -131,7 +161,7 @@ pub struct TlsSpec {
 
 #[derive(Debug, Deserialize)]
 pub struct RouteSpec {
-    #[serde(rename="match")]
+    #[serde(rename = "match")]
     pub m: MatchSpec,
     pub to_upstream: String,
     pub timeout: Option<String>,
@@ -150,7 +180,6 @@ pub struct MatchSpec {
     pub prefix: Option<String>,
     pub path: Option<String>,
 }
-
 
 #[derive(Debug, Deserialize)]
 pub struct PoliciesSpec {
@@ -301,7 +330,10 @@ per_filter_config:
         assert_eq!(route.to_upstream, "api_backend");
         assert_eq!(route.timeout, Some("30s".to_string()));
         assert!(route.per_filter_config.is_some());
-        assert_eq!(route.per_filter_config.as_ref().unwrap().local_ratelimit, Some("strict".to_string()));
+        assert_eq!(
+            route.per_filter_config.as_ref().unwrap().local_ratelimit,
+            Some("strict".to_string())
+        );
     }
 
     #[test]

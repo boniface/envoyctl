@@ -1,11 +1,17 @@
-use crate::{cli::Cli, load, validate, generate, exec};
 use crate::model::ValidateSpec;
+use crate::{cli::Cli, exec, generate, load, validate};
 use anyhow::{Context, Result};
+use std::path::Path;
 use std::{fs, path::PathBuf, process::Command};
 
 pub fn cmd_build(cli: &Cli) -> Result<()> {
     let loaded = load::load_all(&cli.config_dir)?;
-    validate::validate_model(&loaded.domains, &loaded.upstreams, &loaded.policies, &loaded.defaults)?;
+    validate::validate_model(
+        &loaded.domains,
+        &loaded.upstreams,
+        &loaded.policies,
+        &loaded.defaults,
+    )?;
 
     let yaml_value = generate::generate_envoy_yaml(&loaded)?;
 
@@ -43,56 +49,83 @@ fn add_section_comments(yaml: &str, loaded: &load::Loaded) -> String {
     for line in yaml.lines() {
         // Add comment before admin section
         if line == "admin:" {
-            result.push_str("# -----------------------------------------------------------------------------\n");
+            result.push_str(
+                "# -----------------------------------------------------------------------------\n",
+            );
             result.push_str("# Admin Interface\n");
-            result.push_str("# -----------------------------------------------------------------------------\n");
+            result.push_str(
+                "# -----------------------------------------------------------------------------\n",
+            );
         }
 
         // Add comment before static_resources
         if line == "static_resources:" {
             result.push_str("\n# -----------------------------------------------------------------------------\n");
             result.push_str("# Static Resources (Listeners & Clusters)\n");
-            result.push_str("# -----------------------------------------------------------------------------\n");
+            result.push_str(
+                "# -----------------------------------------------------------------------------\n",
+            );
         }
 
         // Add comment before HTTP listener
         if line == "  - name: http_listener" {
-            result.push_str("    # -----------------------------------------------------------------\n");
+            result.push_str(
+                "    # -----------------------------------------------------------------\n",
+            );
             result.push_str("    # HTTP Listener (Port 80)\n");
-            result.push_str(&format!("    # Default upstream: {}\n", loaded.defaults.http_default_upstream));
-            result.push_str("    # -----------------------------------------------------------------\n");
+            result.push_str(&format!(
+                "    # Default upstream: {}\n",
+                loaded.defaults.http_default_upstream
+            ));
+            result.push_str(
+                "    # -----------------------------------------------------------------\n",
+            );
         }
 
         // Add comment before HTTPS SNI listener
         if line == "  - name: https_sni_listener" {
-            result.push_str("\n    # -----------------------------------------------------------------\n");
+            result.push_str(
+                "\n    # -----------------------------------------------------------------\n",
+            );
             result.push_str("    # HTTPS SNI Listener (Port 443)\n");
-            result.push_str("    # TLS termination for configured domains, passthrough for others\n");
+            result
+                .push_str("    # TLS termination for configured domains, passthrough for others\n");
 
             // List domains with TLS termination
-            let terminate_domains: Vec<_> = loaded.domains.iter()
+            let terminate_domains: Vec<_> = loaded
+                .domains
+                .iter()
                 .filter(|d| d.mode == "terminate_https_443")
                 .collect();
 
             if !terminate_domains.is_empty() {
                 result.push_str("    # TLS Termination:\n");
                 for domain in &terminate_domains {
-                    let upstream = domain.routes.first()
+                    let upstream = domain
+                        .routes
+                        .first()
                         .map(|r| r.to_upstream.as_str())
                         .unwrap_or("(no routes)");
                     result.push_str(&format!("    #   - {} -> {}\n", domain.domain, upstream));
                 }
             }
 
-            result.push_str(&format!("    # Default passthrough: {}\n", loaded.defaults.tls_passthrough_upstream));
-            result.push_str("    # -----------------------------------------------------------------\n");
+            result.push_str(&format!(
+                "    # Default passthrough: {}\n",
+                loaded.defaults.tls_passthrough_upstream
+            ));
+            result.push_str(
+                "    # -----------------------------------------------------------------\n",
+            );
         }
 
         // Add comment before clusters section
         if line == "  clusters:" {
             result.push_str("\n  # ---------------------------------------------------------------------------\n");
             result.push_str("  # Clusters (Backend Services)\n");
-            result.push_str("  # ---------------------------------------------------------------------------\n");
+            result.push_str(
+                "  # ---------------------------------------------------------------------------\n",
+            );
         }
 
         result.push_str(line);
@@ -111,31 +144,51 @@ pub fn cmd_validate(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
-fn run_envoy_validate(cli: &Cli, validate: &ValidateSpec, generated: &PathBuf) -> Result<()> {
+fn run_envoy_validate(cli: &Cli, validate: &ValidateSpec, generated: &Path) -> Result<()> {
     match validate {
-        ValidateSpec::DockerExec { container, config_path } => {
+        ValidateSpec::DockerExec {
+            container,
+            config_path,
+        } => {
             // docker exec -it <container> envoy --mode validate -c <config_path>
             // Note: We need to copy the generated config to the container's config path first,
             // or validate against the existing config in the container.
             // For validation, we validate the generated file by mounting it.
-            let abs = generated.canonicalize().context("canonicalize generated path")?;
+            let abs = generated
+                .canonicalize()
+                .context("canonicalize generated path")?;
 
             // First, copy the generated config to the container
             let mut copy_cmd = Command::new("docker");
-            copy_cmd.args(["cp"])
+            copy_cmd
+                .args(["cp"])
                 .arg(abs.to_str().unwrap())
                 .arg(format!("{}:{}", container, config_path));
             exec::run(&mut copy_cmd).context("docker cp config to container")?;
 
             // Then validate inside the container
             let mut cmd = Command::new("docker");
-            cmd.args(["exec", container, "envoy", "--mode", "validate", "-c", config_path]);
+            cmd.args([
+                "exec",
+                container,
+                "envoy",
+                "--mode",
+                "validate",
+                "-c",
+                config_path,
+            ]);
             exec::run(&mut cmd).context("envoy validate (docker exec)")?;
         }
-        ValidateSpec::Native { user, bin, config_path } => {
+        ValidateSpec::Native {
+            user,
+            bin,
+            config_path,
+        } => {
             // sudo -u <user> <bin> --mode validate -c <config_path>
             // First copy generated config to the target path
-            let abs = generated.canonicalize().context("canonicalize generated path")?;
+            let abs = generated
+                .canonicalize()
+                .context("canonicalize generated path")?;
 
             // Copy the generated file to the config path (requires sudo)
             let mut copy_cmd = Command::new("sudo");
@@ -150,12 +203,22 @@ fn run_envoy_validate(cli: &Cli, validate: &ValidateSpec, generated: &PathBuf) -
             // Validate as the envoy user
             let envoy_bin = cli.envoy_bin.clone().unwrap_or_else(|| bin.clone());
             let mut cmd = Command::new("sudo");
-            cmd.args(["-u", user, &envoy_bin, "--mode", "validate", "-c", config_path]);
+            cmd.args([
+                "-u",
+                user,
+                &envoy_bin,
+                "--mode",
+                "validate",
+                "-c",
+                config_path,
+            ]);
             exec::run(&mut cmd).context("envoy validate (native/sudo)")?;
         }
         ValidateSpec::DockerImage { image } => {
             // docker run --rm -v <generated>:/cfg.yaml:ro <image> envoy --mode validate -c /cfg.yaml
-            let abs = generated.canonicalize().context("canonicalize generated path")?;
+            let abs = generated
+                .canonicalize()
+                .context("canonicalize generated path")?;
             let mut cmd = Command::new("docker");
             cmd.args(["run", "--rm", "-v"])
                 .arg(format!("{}:/cfg.yaml:ro", abs.display()))
@@ -172,7 +235,10 @@ fn run_envoy_validate(cli: &Cli, validate: &ValidateSpec, generated: &PathBuf) -
 fn atomic_install(src: &PathBuf, dst: &PathBuf) -> Result<()> {
     let dir = dst.parent().context("install path has no parent")?;
     fs::create_dir_all(dir)?;
-    let tmp = dir.join(format!(".{}.tmp", dst.file_name().unwrap().to_string_lossy()));
+    let tmp = dir.join(format!(
+        ".{}.tmp",
+        dst.file_name().unwrap().to_string_lossy()
+    ));
     fs::copy(src, &tmp)?;
     fs::rename(&tmp, dst)?;
     Ok(())
@@ -239,18 +305,32 @@ mod tests {
         fs::create_dir_all(config_dir.join("policies")).unwrap();
 
         // Create common config files
-        fs::write(config_dir.join("common/admin.yaml"), "address: \"0.0.0.0\"\nport: 9901").unwrap();
+        fs::write(
+            config_dir.join("common/admin.yaml"),
+            "address: \"0.0.0.0\"\nport: 9901",
+        )
+        .unwrap();
         fs::write(config_dir.join("common/defaults.yaml"), "route_timeout: \"60s\"\nhttp_default_upstream: \"default_backend\"\ntls_passthrough_upstream: \"default_tls\"").unwrap();
-        fs::write(config_dir.join("common/access_log.yaml"), "type: \"stdout\"\npath: \"/dev/stdout\"").unwrap();
-        fs::write(config_dir.join("common/runtime.yaml"), r#"validate: {type: "native"}
+        fs::write(
+            config_dir.join("common/access_log.yaml"),
+            "type: \"stdout\"\npath: \"/dev/stdout\"",
+        )
+        .unwrap();
+        fs::write(
+            config_dir.join("common/runtime.yaml"),
+            r#"validate: {type: "native"}
 restart: {type: "docker_restart", container: "envoy"}
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Create policies file
         fs::write(config_dir.join("policies/ratelimits.yaml"), "").unwrap();
 
         // Create a default backend upstream (required by defaults)
-        fs::write(config_dir.join("upstreams/default_backend.yaml"), r#"
+        fs::write(
+            config_dir.join("upstreams/default_backend.yaml"),
+            r#"
 name: "default_backend"
 connect_timeout: "5s"
 type: "STATIC"
@@ -258,10 +338,14 @@ lb_policy: "ROUND_ROBIN"
 endpoints:
   - address: "127.0.0.1"
     port: 8080
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Create a default TLS backend upstream (required by defaults)
-        fs::write(config_dir.join("upstreams/default_tls.yaml"), r#"
+        fs::write(
+            config_dir.join("upstreams/default_tls.yaml"),
+            r#"
 name: "default_tls"
 connect_timeout: "5s"
 type: "STATIC"
@@ -269,7 +353,9 @@ lb_policy: "ROUND_ROBIN"
 endpoints:
   - address: "127.0.0.1"
     port: 8443
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Create CLI instance
         let cli = Cli {
@@ -303,21 +389,39 @@ endpoints:
         fs::create_dir_all(config_dir.join("policies")).unwrap();
 
         // Create common config files
-        fs::write(config_dir.join("common/admin.yaml"), "address: \"0.0.0.0\"\nport: 9901").unwrap();
-        fs::write(config_dir.join("common/defaults.yaml"), "route_timeout: \"60s\"").unwrap();
-        fs::write(config_dir.join("common/access_log.yaml"), "type: \"stdout\"\npath: \"/dev/stdout\"").unwrap();
-        fs::write(config_dir.join("common/runtime.yaml"), r#"validate:
+        fs::write(
+            config_dir.join("common/admin.yaml"),
+            "address: \"0.0.0.0\"\nport: 9901",
+        )
+        .unwrap();
+        fs::write(
+            config_dir.join("common/defaults.yaml"),
+            "route_timeout: \"60s\"",
+        )
+        .unwrap();
+        fs::write(
+            config_dir.join("common/access_log.yaml"),
+            "type: \"stdout\"\npath: \"/dev/stdout\"",
+        )
+        .unwrap();
+        fs::write(
+            config_dir.join("common/runtime.yaml"),
+            r#"validate:
   type: "native"
   user: "envoy"
   bin: "envoy"
   config_path: "/etc/envoy/envoy.yaml"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Create policies file
         fs::write(config_dir.join("policies/ratelimits.yaml"), "").unwrap();
 
         // Create a domain that references a non-existent upstream (invalid)
-        fs::write(config_dir.join("domains/test.yaml"), r#"
+        fs::write(
+            config_dir.join("domains/test.yaml"),
+            r#"
 domain: "example.com"
 mode: "terminate_https_443"
 tls:
@@ -326,7 +430,9 @@ tls:
 routes:
   - match: { prefix: "/api" }
     to_upstream: "nonexistent_backend"  # This doesn't exist
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Create CLI instance
         let cli = Cli {

@@ -23,7 +23,13 @@ fn test_end_to_end_workflow_with_temp_workspace() {
 
     // Initialize a workspace using the CLI
     let init_output = Command::new("cargo")
-        .args(&["run", "--", "init", "--dir", workspace_dir.to_str().unwrap()])
+        .args(&[
+            "run",
+            "--",
+            "init",
+            "--dir",
+            workspace_dir.to_str().unwrap(),
+        ])
         .output()
         .expect("Failed to execute init command");
 
@@ -34,7 +40,10 @@ fn test_end_to_end_workflow_with_temp_workspace() {
         let stdout = String::from_utf8_lossy(&init_output.stdout);
         // If it fails, it should be due to missing templates, not a crash/panic
         // The error should mention the missing template files
-        assert!(!stderr.contains("thread 'main' panicked") && !stdout.contains("thread 'main' panicked"));
+        assert!(
+            !stderr.contains("thread 'main' panicked")
+                && !stdout.contains("thread 'main' panicked")
+        );
     }
     // Note: We don't assert that the workspace was created since init might fail
     // This test mainly verifies that the application handles missing templates gracefully
