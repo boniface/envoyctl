@@ -1,100 +1,146 @@
 # envoyctl
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Tests](https://github.com/boniface/envoyctl/actions/workflows/tests.yml/badge.svg)](https://github.com/boniface/envoyctl/actions/workflows/tests.yml)
 
-**envoyctl** is a configuration management and deployment tool for [Envoy Proxy](https://www.envoyproxy.io/).
+**envoyctl** is a configuration management tool for [Envoy Proxy](https://www.envoyproxy.io/).
 
-It lets you manage complex Envoy configurations using **small, focused YAML fragments** and validates the generated configuration using Envoy itself.
-
-## Architecture Overview
-
-```mermaid
-graph TB
-    subgraph "Configuration Fragments"
-        A[domains/*.yaml]
-        B[upstreams/*.yaml]
-        C[policies/*.yaml]
-        D[common/*.yaml]
-    end
-
-    subgraph "envoyctl Processing"
-        E[load fragments]
-        F[validate config]
-        G[generate Envoy YAML]
-    end
-
-    subgraph "Deployment"
-        H["validate with Envoy"]
-        I["atomic install"]
-        J["restart Envoy"]
-    end
-
-    A --> E
-    B --> E
-    C --> E
-    D --> E
-    E --> F
-    F --> G
-    G --> H
-    H --> I
-    I --> J
-
-    subgraph "Generated Output"
-        K[envoy.generated.yaml]
-    end
-
-    G --> K
-```
+Manage complex Envoy configurations using **small, focused YAML fragments**, validate with Envoy itself, and deploy with confidence.
 
 ---
 
 ## Table of Contents
 
+- [Installation](#installation)
+- [Quick Start](#quick-start)
 - [What is Envoy?](#what-is-envoy)
 - [Why envoyctl?](#why-envoyctl)
 - [Features](#features)
-- [Quick Start](#quick-start)
-- [Installation](#installation)
 - [Workspace Layout](#workspace-layout)
 - [Configuration Examples](#configuration-examples)
 - [Commands](#commands)
+- [Validation Modes](#validation-modes)
 - [TLS Behavior](#tls-behavior)
-- [Validation & Safety](#validation--safety)
 - [Docker Deployment](#docker-deployment)
 - [Contributing](#contributing)
 - [License](#license)
 
 ---
 
+## Installation
+
+### From APT Repository (Debian/Ubuntu) — Recommended
+
+```bash
+# 1. Download and install the GPG signing key
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://boniface.github.io/envoyctl/public.gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/envoyctl.gpg
+
+# 2. Add the APT repository
+echo "deb [signed-by=/etc/apt/keyrings/envoyctl.gpg] https://boniface.github.io/envoyctl stable main" \
+  | sudo tee /etc/apt/sources.list.d/envoyctl.list
+
+# 3. Update and install
+sudo apt update
+sudo apt install envoyctl
+
+# 4. Verify installation
+envoyctl --version
+```
+
+### From Source (Rust)
+
+```bash
+# Clone the repository
+git clone https://github.com/boniface/envoyctl.git
+cd envoyctl
+
+# Build release binary
+cargo build --release
+
+# Install to system
+sudo cp target/release/envoyctl /usr/local/bin/
+
+# Verify installation
+envoyctl --version
+```
+
+### From GitHub Releases
+
+Download the `.deb` package directly from [GitHub Releases](https://github.com/boniface/envoyctl/releases):
+
+```bash
+# Download the latest release
+curl -LO https://github.com/boniface/envoyctl/releases/latest/download/envoyctl_0.1.0_amd64.deb
+
+# Install
+sudo dpkg -i envoyctl_*.deb
+
+# Verify
+envoyctl --version
+```
+
+---
+
+## Quick Start
+
+### 1. Initialize a Workspace
+
+```bash
+envoyctl init --dir ./my-envoy-config
+cd ./my-envoy-config
+```
+
+### 2. Review and Edit Configuration
+
+```bash
+# Edit the example domain
+vim config/domains/example.com.yaml
+
+# Edit backend upstreams
+vim config/upstreams/api_backend.yaml
+vim config/upstreams/web_frontend.yaml
+
+# Configure validation mode
+vim config/common/runtime.yaml
+```
+
+### 3. Build Configuration
+
+```bash
+envoyctl --config-dir ./config --out-dir ./out build
+```
+
+### 4. Validate with Envoy
+
+```bash
+envoyctl --config-dir ./config --out-dir ./out validate
+```
+
+The generated configuration will be at `./out/envoy.generated.yaml`.
+
+---
+
 ## What is Envoy?
 
-[Envoy](https://www.envoyproxy.io/) is a high-performance, open-source edge and service proxy designed for cloud-native applications. Originally built at Lyft, it's now a graduated [CNCF](https://www.cncf.io/) project used by companies like Google, Microsoft, and Amazon.
-
-### What Envoy Does
+[Envoy](https://www.envoyproxy.io/) is a high-performance, open-source edge and service proxy designed for cloud-native applications. Originally built at Lyft, it's now a graduated [CNCF](https://www.cncf.io/) project.
 
 | Capability | Description |
 |------------|-------------|
-| **Load Balancing** | Distributes traffic across backend services with multiple algorithms |
-| **TLS Termination** | Handles HTTPS connections at the edge, offloading encryption from backends |
-| **TLS Passthrough** | Routes encrypted traffic based on SNI without decrypting |
-| **Reverse Proxy** | Routes HTTP/HTTPS requests to appropriate backend services |
-| **Rate Limiting** | Protects services from abuse and overload |
-| **Health Checking** | Monitors backend health and removes unhealthy instances |
-| **Observability** | Provides detailed metrics, logging, and tracing |
-
-### Common Use Cases
-
-- **API Gateway**: Route and secure API traffic
-- **Edge Proxy**: Handle incoming traffic at the network edge
-- **Service Mesh Sidecar**: Proxy service-to-service communication (used by Istio)
-- **Load Balancer**: Distribute traffic across multiple backends
+| **Load Balancing** | Distributes traffic across backend services |
+| **TLS Termination** | Handles HTTPS at the edge |
+| **TLS Passthrough** | Routes encrypted traffic via SNI |
+| **Reverse Proxy** | Routes HTTP/HTTPS to backends |
+| **Rate Limiting** | Protects services from abuse |
+| **Health Checking** | Monitors backend health |
+| **Observability** | Metrics, logging, and tracing |
 
 ### The Configuration Challenge
 
-Envoy is incredibly powerful, but its configuration can be complex:
+Envoy is powerful but verbose. A simple route requires 50+ lines of YAML:
 
 ```yaml
-# A simple Envoy route requires this much YAML...
 static_resources:
   listeners:
     - name: listener_0
@@ -106,40 +152,27 @@ static_resources:
         - filters:
             - name: envoy.filters.network.http_connection_manager
               typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-                stat_prefix: ingress_http
-                route_config:
-                  name: local_route
-                  virtual_hosts:
-                    - name: backend
-                      domains: ["example.com"]
-                      routes:
-                        - match:
-                            prefix: "/"
-                          route:
-                            cluster: my_backend
-# ... and this continues for clusters, TLS, etc.
+                "@type": type.googleapis.com/...
+                # ... continues for many more lines
 ```
 
-**This is where envoyctl helps.** It generates this complex configuration from simple, human-readable fragments.
+**envoyctl solves this** by generating complete Envoy configurations from simple fragments.
 
 ---
 
 ## Why envoyctl?
 
-As Envoy configurations grow, they become difficult to manage:
-
 | Problem | envoyctl Solution |
 |---------|-------------------|
-| Routes, listeners, clusters scattered across giant files | Small, focused YAML fragments |
-| Small changes require editing large files | Edit one file per domain/upstream |
-| Validation happens late (or not at all) | Always validated before apply |
-| Rollouts are risky | Atomic install, rollback on failure |
-| Hard to audit changes | Deterministic, documented output |
+| Giant, unwieldy config files | Small, focused YAML fragments |
+| Hard to make changes safely | One file per domain/upstream |
+| Late or no validation | Always validated before use |
+| Risky deployments | Atomic config generation |
+| Difficult to audit | Deterministic, commented output |
 
-### How envoyctl Simplifies Configuration
+### Simple Configuration
 
-Instead of writing hundreds of lines of Envoy YAML, you write this:
+Instead of hundreds of lines, write this:
 
 ```yaml
 # config/domains/example.com.yaml
@@ -165,152 +198,57 @@ endpoints:
   - { address: "api-service", port: 8080 }
 ```
 
-Then run:
+Then generate:
 
 ```bash
-envoyctl build    # Generate full Envoy config
-envoyctl validate # Validate with Envoy
-envoyctl apply    # Install and restart
+envoyctl --config-dir ./config --out-dir ./out build
 ```
 
 ---
 
 ## Features
 
-- **Fragment-based configuration** — `domains/`, `upstreams/`, `policies/`
-- **Generates Envoy v3 static configuration**
-- **Default TLS passthrough** on :443, with explicit SNI termination
-- **Built-in validation** using Envoy (`--mode validate`)
-- **Docker support** — validate and run via containers
-- **systemd integration** — oneshot service + timer
-- **Atomic config installation** — no partial updates
-- **Works on Debian/Ubuntu** — APT repository available
-
----
-
-## Quick Start
-
-### 1. Initialize a Workspace
-
-```bash
-envoyctl init --dir ./my-envoy-config
-cd ./my-envoy-config
-```
-
-### 2. Edit Your Configuration
-
-```bash
-# Edit the example domain
-vim config/domains/example.com.yaml
-
-# Edit the backend upstream  
-vim config/upstreams/api_backend.yaml
-```
-
-### 3. Validate
-
-```bash
-envoyctl validate --config-dir ./config --out-dir ./out
-```
-
-### 4. Apply (Install + Restart Envoy)
-
-```bash
-envoyctl apply --config-dir ./config --out-dir ./out
-```
-
----
-
-## Installation
-
-### From Source (Rust)
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/envoyctl.git
-cd envoyctl
-
-# Build
-cargo build --release
-
-# Install
-sudo cp target/release/envoyctl /usr/local/bin/
-```
-
-### From APT Repository (Debian/Ubuntu)
-
-```bash
-# 1. Add the repository signing key
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://boniface.github.io/envoyctl/public.gpg \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/envoyctl-archive-keyring.gpg
-
-# 2. Add the APT repository
-echo "deb [signed-by=/etc/apt/keyrings/envoyctl-archive-keyring.gpg] https://boniface.github.io/envoyctl stable main" \
-  | sudo tee /etc/apt/sources.list.d/envoyctl.list
-
-# 3. Install
-sudo apt update
-sudo apt install envoyctl
-```
-
-### What Gets Installed (APT)
-
-| Path | Description |
-|------|-------------|
-| `/usr/bin/envoyctl` | CLI tool |
-| `/usr/share/envoyctl/templates/` | Workspace templates |
-| `/etc/default/envoyctl` | Runtime configuration |
-| `/var/lib/envoyctl/work/` | Default workspace |
+- ✅ **Fragment-based configuration** — Organize by domain, upstream, policy
+- ✅ **Envoy v3 static configuration** — Full compatibility
+- ✅ **TLS termination & passthrough** — Flexible HTTPS handling
+- ✅ **Built-in validation** — Validate with Docker or native Envoy
+- ✅ **Section comments** — Generated YAML includes helpful comments
+- ✅ **Timestamps** — Know when config was generated
+- ✅ **APT repository** — Easy installation on Debian/Ubuntu
 
 ---
 
 ## Workspace Layout
 
-```mermaid
-C4Component
-    title Workspace Layout for envoyctl
-    Container_Boundary(workspace, "my-envoy-config/") {
-        Container_Boundary(config, "config/", "Configuration fragments") {
-            Container_Boundary(common, "common/", "Shared settings") {
-                Component(admin, "admin.yaml", "YAML", "Envoy admin interface")
-                Component(defaults, "defaults.yaml", "YAML", "Global defaults")
-                Component(runtime, "runtime.yaml", "YAML", "Validation settings")
-                Component(access_log, "access_log.yaml", "YAML", "Logging configuration")
-                Component(default_http, "default_http_backend.yaml", "YAML", "Default HTTP backend")
-                Component(default_tls, "default_tls_backend.yaml", "YAML", "Default TLS backend")
-            }
-            Container_Boundary(domains, "domains/", "Domain definitions") {
-                Component(domain_example, "example.com.yaml", "YAML", "One file per domain")
-            }
-            Container_Boundary(upstreams, "upstreams/", "Backend clusters") {
-                Component(upstream_api, "api_backend.yaml", "YAML", "One file per backend")
-                Component(upstream_web, "web_frontend.yaml", "YAML", "One file per backend")
-            }
-            Container_Boundary(policies, "policies/", "Reusable policies") {
-                Component(headers, "headers.yaml", "YAML", "Header manipulation")
-                Component(ratelimits, "ratelimits.yaml", "YAML", "Rate limiting rules")
-                Component(retries, "retries.yaml", "YAML", "Retry policies")
-                Component(timeouts, "timeouts.yaml", "YAML", "Timeout configurations")
-            }
-        }
-        Container_Boundary(out, "out/", "Generated output") {
-            Component(generated, "envoy.generated.yaml", "YAML", "Generated config (don't edit!)")
-        }
-    }
-
-    Rel(config, common, "contains")
-    Rel(config, domains, "contains")
-    Rel(config, upstreams, "contains")
-    Rel(config, policies, "contains")
-    Rel(workspace, out, "contains")
+```
+my-envoy-config/
+├── config/
+│   ├── common/
+│   │   ├── admin.yaml              # Envoy admin interface
+│   │   ├── defaults.yaml           # Global defaults
+│   │   ├── runtime.yaml            # Validation settings
+│   │   ├── access_log.yaml         # Logging configuration
+│   │   ├── default_http_backend.yaml
+│   │   └── default_tls_backend.yaml
+│   ├── domains/
+│   │   └── example.com.yaml        # One file per domain
+│   ├── upstreams/
+│   │   ├── api_backend.yaml        # One file per backend
+│   │   └── web_frontend.yaml
+│   └── policies/
+│       ├── headers.yaml            # Header manipulation
+│       ├── ratelimits.yaml         # Rate limiting
+│       ├── retries.yaml            # Retry policies
+│       └── timeouts.yaml           # Timeout configs
+└── out/
+    └── envoy.generated.yaml        # Generated config (don't edit!)
 ```
 
 ---
 
 ## Configuration Examples
 
-### Adding a New Domain
+### Adding a Domain
 
 Create `config/domains/api.example.com.yaml`:
 
@@ -327,11 +265,9 @@ routes:
     to_upstream: api_v1
     timeout: 30s
     
-  - match: { prefix: "/v2/" }
-    to_upstream: api_v2
-    timeout: 30s
-    per_filter_config:
-      local_ratelimit: strict
+  - match: { prefix: "/" }
+    to_upstream: web_frontend
+    timeout: 60s
 ```
 
 ### Adding an Upstream
@@ -346,10 +282,10 @@ lb_policy: ROUND_ROBIN
 http2: true
 endpoints:
   - { address: "api-v1-service", port: 8080 }
-  - { address: "api-v1-service-2", port: 8080 }
+  - { address: "api-v1-backup", port: 8080 }
 ```
 
-### Rate Limiting a Route
+### Rate Limiting
 
 In `config/policies/ratelimits.yaml`:
 
@@ -361,7 +297,7 @@ local_ratelimits:
     fill_interval: 1s
 ```
 
-Reference in your domain:
+Reference in domain routes:
 
 ```yaml
 routes:
@@ -377,11 +313,11 @@ routes:
 
 | Command | Description |
 |---------|-------------|
-| `envoyctl init` | Create a new workspace from templates |
+| `envoyctl init --dir <path>` | Create a new workspace from templates |
 | `envoyctl build` | Generate Envoy config from fragments |
 | `envoyctl validate` | Build + validate with Envoy |
 
-### Common Options
+### Options
 
 ```bash
 envoyctl [OPTIONS] <COMMAND>
@@ -390,33 +326,62 @@ Options:
   --config-dir <PATH>     Config directory [default: config]
   --out-dir <PATH>        Output directory [default: out]
   --install-path <PATH>   Install target [default: /etc/envoy/envoy.yaml]
-  --envoy-bin <PATH>      Envoy binary (native mode)
+  --envoy-bin <PATH>      Envoy binary path (for native validation)
   -h, --help              Print help
   -V, --version           Print version
 ```
 
-### Using Custom Directories
-
-You can specify custom configuration and output directories:
+### Examples
 
 ```bash
-# Default paths (config/ and out/ in current directory)
-envoyctl validate
+# Build with default paths
+envoyctl build
 
-# Custom config and output directories
-envoyctl validate --config-dir ./my-project/envoy-config --out-dir ./my-project/generated
+# Build with custom paths
+envoyctl --config-dir ./my-config --out-dir ./my-output build
 
-# Absolute paths
-envoyctl validate --config-dir /home/user/configs --out-dir /tmp/envoy-output
-
-# Different project structure
-envoyctl build --config-dir ../shared-config --out-dir ./local-out
+# Validate configuration
+envoyctl --config-dir ./config --out-dir ./out validate
 ```
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--config-dir` | Folder containing `domains/`, `upstreams/`, `policies/`, `common/` | `./config` |
-| `--out-dir` | Folder where `envoy.generated.yaml` is written | `./out` |
+---
+
+## Validation Modes
+
+Configure in `config/common/runtime.yaml`:
+
+### Docker Exec (for Docker deployments)
+
+Validates inside a running Envoy container:
+
+```yaml
+validate:
+  type: docker_exec
+  container: envoy                    # Container name
+  config_path: /etc/envoy/envoy.yaml  # Path inside container
+```
+
+### Native (for baremetal/systemd)
+
+Validates using local Envoy binary with sudo:
+
+```yaml
+validate:
+  type: native
+  user: envoy                         # User to run as
+  bin: envoy                          # Envoy binary path
+  config_path: /etc/envoy/envoy.yaml  # Config path
+```
+
+### Docker Image (for CI/testing)
+
+Validates using a fresh container:
+
+```yaml
+validate:
+  type: docker_image
+  image: envoyproxy/envoy:v1.31-latest
+```
 
 ---
 
@@ -428,57 +393,53 @@ envoyctl build --config-dir ../shared-config --out-dir ./local-out
 | `passthrough_443` | 443 | TLS passed through unchanged (SNI routing) |
 | `http_80` | 80 | Plain HTTP |
 
-**Default behavior for unknown domains on :443**: TLS passthrough to `default_tls_backend`.
-
-This mirrors common edge-proxy setups and avoids breaking unknown hosts.
-
----
-
-## Validation & Safety
-
-Before any configuration is generated:
-
-1. Fragment references are validated (upstreams exist, policies defined)
-2. Envoy validates the generated config: `envoy --mode validate -c config.yaml`
-
-The generated configuration file can then be manually deployed to Envoy.
-
----
-
+**Default for unknown domains on :443**: TLS passthrough to `default_tls_backend`.
 
 ---
 
 ## Docker Deployment
 
-For Docker-based deployments, see the [Docker Deployment Tutorial](docs/docker-deployment.md).
+See the full [Docker Deployment Tutorial](docs/docker-deployment.md).
 
-Quick example:
+### Quick Example
 
 ```bash
-# Generate and validate using Docker
-envoyctl validate --config-dir ./config --out-dir ./out
+# Generate configuration
+envoyctl --config-dir ./config --out-dir ./out build
 
-# Run Envoy with the generated config
+# Run Envoy with generated config
 docker run -d \
   --name envoy \
   -p 80:80 -p 443:443 -p 9901:9901 \
   -v $(pwd)/out/envoy.generated.yaml:/etc/envoy/envoy.yaml:ro \
   -v /etc/envoy/certs:/etc/envoy/certs:ro \
-  envoyproxy/envoy:v1.36.4
+  envoyproxy/envoy:v1.31-latest
+```
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  envoy:
+    image: envoyproxy/envoy:v1.31-latest
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:9901:9901"
+    volumes:
+      - ./out/envoy.generated.yaml:/etc/envoy/envoy.yaml:ro
+      - /etc/letsencrypt:/etc/envoy/certs:ro
+    restart: unless-stopped
 ```
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-- Development setup
-- Coding standards
-- Commit guidelines
-- Pull request process
-
-### Quick Development Setup
+### Development Setup
 
 ```bash
 # Clone
@@ -491,7 +452,10 @@ cargo build
 # Run tests
 cargo test
 
-# Run clippy
+# Check formatting
+cargo fmt -- --check
+
+# Run lints
 cargo clippy -- -D warnings
 ```
 
@@ -499,18 +463,16 @@ cargo clippy -- -D warnings
 
 ## License
 
-MIT License
+MIT License — Copyright (c) 2025 Boniface Kabaso
 
-Copyright (c) 2025 Boniface Kabaso
-
-See [LICENSE](./LICENSE) for full license text.
+See [LICENSE](./LICENSE) for full text.
 
 ---
 
-## Acknowledgements
+## Links
 
-- [Envoy Proxy](https://www.envoyproxy.io/) project
-- [CNCF](https://www.cncf.io/) community
-- Debian packaging community
-- systemd maintainers
+- **Repository**: [github.com/boniface/envoyctl](https://github.com/boniface/envoyctl)
+- **APT Repository**: [boniface.github.io/envoyctl](https://boniface.github.io/envoyctl)
+- **Documentation**: [docs/](./docs/)
+- **Envoy Proxy**: [envoyproxy.io](https://www.envoyproxy.io/)
 

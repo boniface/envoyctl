@@ -172,6 +172,8 @@ jobs:
           echo "public.gpg created successfully ($(wc -c < apt-repo/public.gpg) bytes)"
 
       - name: Prepare APT repo
+        env:
+          RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
         run: |
           find . -name '*.deb' -ls
           DEB=$(find . -name '*.deb' -print -quit)
@@ -189,17 +191,17 @@ jobs:
           dpkg-scanpackages --arch amd64 pool > dists/stable/main/binary-amd64/Packages
           gzip -kf dists/stable/main/binary-amd64/Packages
           
-          cat > dists/stable/Release <<EOF
-Origin: envoyctl
-Label: envoyctl
-Suite: stable
-Codename: stable
-Version: ${{ needs.build.outputs.release_tag }}
-Architectures: amd64
-Components: main
-Description: Envoy configuration management tool
-Date: $(date -Ru)
-EOF
+          printf '%s\n' \
+            "Origin: envoyctl" \
+            "Label: envoyctl" \
+            "Suite: stable" \
+            "Codename: stable" \
+            "Version: ${RELEASE_TAG}" \
+            "Architectures: amd64" \
+            "Components: main" \
+            "Description: Envoy configuration management tool" \
+            "Date: $(date -Ru)" \
+            > dists/stable/Release
           
           apt-ftparchive release dists/stable >> dists/stable/Release
           
