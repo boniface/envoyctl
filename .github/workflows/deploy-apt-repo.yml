@@ -1,0 +1,172 @@
+name: Deploy APT Repository
+
+# This workflow is triggered MANUALLY from the GitHub Actions UI
+# It publishes the .deb package to GitHub Pages APT repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to deploy (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pages: write
+
+env:
+  GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+jobs:
+  deploy:
+    name: Deploy to GitHub Pages APT Repo
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download release asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.version }}"
+          echo "Downloading .deb from release $TAG..."
+          
+          # Download the .deb file from the GitHub release
+          gh release download "$TAG" --pattern "*.deb" --dir .
+          
+          DEB=$(find . -name '*.deb' -print -quit)
+          if [ -z "$DEB" ]; then
+            echo "ERROR: No .deb file found in release $TAG"
+            exit 1
+          fi
+          echo "Downloaded: $DEB"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev gnupg apt-utils
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+
+      - name: Ensure apt-repo directory exists
+        run: mkdir -p apt-repo
+
+      - name: Export GPG public key
+        run: |
+          KEY_ID=$(gpg --list-keys --keyid-format SHORT | grep -E "^pub" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+          gpg --armor --export "$KEY_ID" > apt-repo/public.gpg
+          if [ ! -s apt-repo/public.gpg ]; then
+            echo "ERROR: public.gpg is empty!"
+            exit 1
+          fi
+          echo "GPG public key exported successfully"
+
+      - name: Prepare APT repository
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.version }}
+        run: |
+          DEB=$(find . -name '*.deb' -print -quit)
+          if [ ! -f "$DEB" ]; then
+            echo "No .deb file found, aborting."
+            exit 1
+          fi
+          
+          mkdir -p apt-repo/pool/main/e/envoyctl \
+                   apt-repo/dists/stable/main/binary-amd64
+          
+          cp "$DEB" apt-repo/pool/main/e/envoyctl/
+          
+          cd apt-repo
+          dpkg-scanpackages --arch amd64 pool > dists/stable/main/binary-amd64/Packages
+          gzip -kf dists/stable/main/binary-amd64/Packages
+          
+          printf '%s\n' \
+            "Origin: envoyctl" \
+            "Label: envoyctl" \
+            "Suite: stable" \
+            "Codename: stable" \
+            "Version: ${RELEASE_TAG}" \
+            "Architectures: amd64" \
+            "Components: main" \
+            "Description: Envoy configuration management tool" \
+            "Date: $(date -Ru)" \
+            > dists/stable/Release
+          
+          apt-ftparchive release dists/stable >> dists/stable/Release
+          
+          echo "${GPG_PASSPHRASE}" \
+            | gpg --batch --passphrase-fd 0 --pinentry-mode loopback -abs \
+            -o dists/stable/Release.gpg \
+            dists/stable/Release
+          
+          echo "${GPG_PASSPHRASE}" \
+            | gpg --batch --passphrase-fd 0 --pinentry-mode loopback --clearsign \
+            -o dists/stable/InRelease \
+            dists/stable/Release
+          
+          cd ..
+          echo "=== APT Repo Structure ==="
+          find apt-repo -type f -name "*.deb" -o -name "*.gpg" -o -name "Release*" -o -name "Packages*" | head -20
+
+      - name: Create index.html
+        run: |
+          cat > apt-repo/index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>envoyctl APT Repository</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; }
+              h1 { color: #333; }
+              pre { background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+              code { background: #e8e8e8; padding: 0.2rem 0.4rem; border-radius: 3px; }
+              .note { background: #fff3cd; border-left: 4px solid #ffc107; padding: 1rem; margin: 1rem 0; }
+            </style>
+          </head>
+          <body>
+            <h1>envoyctl APT Repository</h1>
+            <p>This is the official APT repository for <strong>envoyctl</strong> - Envoy configuration management tool.</p>
+            
+            <h2>Installation</h2>
+            <pre>
+          # Download and install the GPG key
+          curl -fsSL https://boniface.github.io/envoyctl/public.gpg \
+            | sudo gpg --dearmor -o /etc/apt/keyrings/envoyctl.gpg
+
+          # Add the repository
+          echo "deb [signed-by=/etc/apt/keyrings/envoyctl.gpg] https://boniface.github.io/envoyctl stable main" \
+            | sudo tee /etc/apt/sources.list.d/envoyctl.list
+
+          # Update and install
+          sudo apt update
+          sudo apt install envoyctl
+            </pre>
+            
+            <h2>Links</h2>
+            <ul>
+              <li><a href="https://github.com/boniface/envoyctl">GitHub Repository</a></li>
+              <li><a href="public.gpg">GPG Public Key</a></li>
+            </ul>
+            
+            <div class="note">
+              <strong>Note:</strong> This repository is automatically updated when new releases are published.
+            </div>
+          </body>
+          </html>
+          HTMLEOF
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: apt-repo
+          target-folder: /
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: gh-pages
+          clean: true
+          single-commit: true
+

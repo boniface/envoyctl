@@ -1,1 +1,11 @@
 /target
+/tests/certs/
+/tests/README.md
+/tests/integration-test.sh
+/tests/generate-test-certs.sh
+/tests/envoy.yaml
+/tests/docker-compose.yml
+/tests/out/
+/tests/mock-backends/
+/tests/config/
+

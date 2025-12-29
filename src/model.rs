@@ -59,6 +59,37 @@ pub struct RuntimeSpec {
     pub validate: ValidateSpec,
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct ListenersSpec {
+    #[serde(default)]
+    pub internal_http_listeners: Vec<InternalHttpListenerSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InternalHttpListenerSpec {
+    pub name: String,
+    pub address: String,
+    pub port: u16,
+    pub stat_prefix: String,
+    pub domains: Vec<String>,
+    pub to_upstream: String,
+    pub timeout: Option<String>,
+    #[serde(default)]
+    pub request_headers_to_add: Vec<HeaderValueOption>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HeaderValueOption {
+    pub header: HeaderValue,
+    pub append_action: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HeaderValue {
+    pub key: String,
+    pub value: String,
+}
+
 /// Validation mode for checking Envoy configuration
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
@@ -138,16 +169,33 @@ pub struct Endpoint {
     pub port: u16,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct DomainSpec {
+    #[serde(default)]
     pub domain: String,
 
     /// Supported: "terminate_https_443" or "passthrough_https_443"
     #[serde(default = "default_mode")]
     pub mode: String,
 
+    #[serde(default)]
     pub tls: Option<TlsSpec>,
+    #[serde(default)]
     pub routes: Vec<RouteSpec>,
+    #[serde(default)]
+    pub http_connection_manager: Option<HttpConnectionManagerSpec>,
+
+    /// Override normalize_path for this domain (default: true, but set false for S3 signing)
+    #[serde(default)]
+    pub normalize_path: Option<bool>,
+
+    /// Override merge_slashes for this domain (default: true, but set false for S3 signing)
+    #[serde(default)]
+    pub merge_slashes: Option<bool>,
+
+    /// AWS Request Signing configuration for upstream requests
+    #[serde(default)]
+    pub aws_signing: Option<AwsSigningSpec>,
 }
 fn default_mode() -> String {
     "terminate_https_443".into()
@@ -159,13 +207,63 @@ pub struct TlsSpec {
     pub private_key: String,
 }
 
+/// AWS Request Signing configuration for upstream requests
 #[derive(Debug, Deserialize)]
+pub struct AwsSigningSpec {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_s3_service")]
+    pub service_name: String,
+    #[serde(default = "default_garage_region")]
+    pub region: String,
+    #[serde(default = "default_unsigned_payload")]
+    pub use_unsigned_payload: bool,
+    /// Use only environment variables for credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+    /// This prevents Envoy from trying IMDS/instance profile which fails on non-AWS environments
+    #[serde(default = "default_use_env_credentials")]
+    pub use_env_credentials: bool,
+}
+
+fn default_s3_service() -> String {
+    "s3".into()
+}
+fn default_garage_region() -> String {
+    "garage".into()
+}
+fn default_unsigned_payload() -> bool {
+    true
+}
+fn default_use_env_credentials() -> bool {
+    true  // Default to true since most non-AWS deployments need this
+}
+
+#[derive(Debug, Deserialize, Default)]
 pub struct RouteSpec {
-    #[serde(rename = "match")]
+    #[serde(rename = "match", default)]
     pub m: MatchSpec,
-    pub to_upstream: String,
+
+    /// Upstream cluster to route to (mutually exclusive with direct_response)
+    #[serde(default)]
+    pub to_upstream: Option<String>,
+
+    #[serde(default)]
     pub timeout: Option<String>,
+    #[serde(default)]
     pub per_filter_config: Option<PerFilterConfigRef>,
+
+    /// Rewrite the path prefix before forwarding upstream
+    #[serde(default)]
+    pub prefix_rewrite: Option<String>,
+
+    /// Return a direct response instead of routing to upstream
+    #[serde(default)]
+    pub direct_response: Option<DirectResponseSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DirectResponseSpec {
+    pub status: u16,
+    pub body: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -175,10 +273,22 @@ pub struct PerFilterConfigRef {
 
 /// Match specification for routes
 /// Supports: { prefix: "/api/" } or { path: "/health" }
-#[derive(Debug, Deserialize, Clone)]
+/// Can also include header matchers
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct MatchSpec {
+    #[serde(default)]
     pub prefix: Option<String>,
+    #[serde(default)]
     pub path: Option<String>,
+    /// Header matchers for the route
+    #[serde(default)]
+    pub headers: Vec<HeaderMatcher>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct HeaderMatcher {
+    pub name: String,
+    pub exact_match: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,6 +302,26 @@ pub struct TokenBucket {
     pub max_tokens: u32,
     pub tokens_per_fill: u32,
     pub fill_interval: String,
+    pub stat_prefix: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HttpConnectionManagerSpec {
+    pub stat_prefix: Option<String>,
+    pub normalize_path: Option<bool>,
+    pub merge_slashes: Option<bool>,
+    pub use_remote_address: Option<bool>,
+    pub xff_num_trusted_hops: Option<u32>,
+    pub stream_idle_timeout: Option<String>,
+    pub local_ratelimit_stat_prefix: Option<String>,
+    #[serde(default)]
+    pub extra_http_filters: Vec<HttpFilterSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HttpFilterSpec {
+    GrpcWeb,
 }
 
 #[cfg(test)]
@@ -301,7 +431,7 @@ routes:
         assert_eq!(domain.mode, "terminate_https_443");
         assert!(domain.tls.is_some());
         assert_eq!(domain.routes.len(), 1);
-        assert_eq!(domain.routes[0].to_upstream, "api_backend");
+        assert_eq!(domain.routes[0].to_upstream, Some("api_backend".to_string()));
         assert_eq!(domain.routes[0].timeout, Some("30s".to_string()));
     }
 
@@ -327,7 +457,7 @@ per_filter_config:
   local_ratelimit: "strict"
 "#;
         let route: RouteSpec = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(route.to_upstream, "api_backend");
+        assert_eq!(route.to_upstream, Some("api_backend".to_string()));
         assert_eq!(route.timeout, Some("30s".to_string()));
         assert!(route.per_filter_config.is_some());
         assert_eq!(

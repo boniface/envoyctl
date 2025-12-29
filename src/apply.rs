@@ -33,6 +33,9 @@ pub fn cmd_build(cli: &Cli) -> Result<()> {
 
     let body = serde_yaml::to_string(&yaml_value)?;
 
+    // Fix @type quoting - Envoy requires double quotes, serde_yaml uses single quotes
+    let body = body.replace("'@type':", "\"@type\":");
+
     // Add section comments for better readability
     let body = add_section_comments(&body, &loaded);
 
@@ -47,6 +50,8 @@ fn add_section_comments(yaml: &str, loaded: &load::Loaded) -> String {
     let mut result = String::new();
 
     for line in yaml.lines() {
+        let indent = line.chars().take_while(|c| *c == ' ').count();
+        let indent_str = " ".repeat(indent);
         // Add comment before admin section
         if line == "admin:" {
             result.push_str(
@@ -68,28 +73,35 @@ fn add_section_comments(yaml: &str, loaded: &load::Loaded) -> String {
         }
 
         // Add comment before HTTP listener
-        if line == "  - name: http_listener" {
+        if line.trim_start() == "- name: http_listener" {
             result.push_str(
-                "    # -----------------------------------------------------------------\n",
+                &format!("{indent_str}# -----------------------------------------------------------------\n"),
             );
-            result.push_str("    # HTTP Listener (Port 80)\n");
+            result.push_str(&format!("{indent_str}# HTTP Listener (Port 80)\n"));
             result.push_str(&format!(
-                "    # Default upstream: {}\n",
-                loaded.defaults.http_default_upstream
+                "{}# Default upstream: {}\n",
+                indent_str, loaded.defaults.http_default_upstream
             ));
-            result.push_str(
-                "    # -----------------------------------------------------------------\n",
-            );
+            result.push_str(&format!(
+                "{}# -----------------------------------------------------------------\n",
+                indent_str
+            ));
         }
 
         // Add comment before HTTPS SNI listener
-        if line == "  - name: https_sni_listener" {
-            result.push_str(
-                "\n    # -----------------------------------------------------------------\n",
-            );
-            result.push_str("    # HTTPS SNI Listener (Port 443)\n");
-            result
-                .push_str("    # TLS termination for configured domains, passthrough for others\n");
+        if line.trim_start() == "- name: https_sni_listener" {
+            result.push_str(&format!(
+                "\n{}# -----------------------------------------------------------------\n",
+                indent_str
+            ));
+            result.push_str(&format!(
+                "{}# HTTPS SNI Listener (Port 443)\n",
+                indent_str
+            ));
+            result.push_str(&format!(
+                "{}# TLS termination for configured domains, passthrough for others\n",
+                indent_str
+            ));
 
             // List domains with TLS termination
             let terminate_domains: Vec<_> = loaded
@@ -99,24 +111,28 @@ fn add_section_comments(yaml: &str, loaded: &load::Loaded) -> String {
                 .collect();
 
             if !terminate_domains.is_empty() {
-                result.push_str("    # TLS Termination:\n");
+                result.push_str(&format!("{}# TLS Termination:\n", indent_str));
                 for domain in &terminate_domains {
                     let upstream = domain
                         .routes
                         .first()
-                        .map(|r| r.to_upstream.as_str())
+                        .and_then(|r| r.to_upstream.as_deref())
                         .unwrap_or("(no routes)");
-                    result.push_str(&format!("    #   - {} -> {}\n", domain.domain, upstream));
+                    result.push_str(&format!(
+                        "{}#   - {} -> {}\n",
+                        indent_str, domain.domain, upstream
+                    ));
                 }
             }
 
             result.push_str(&format!(
-                "    # Default passthrough: {}\n",
-                loaded.defaults.tls_passthrough_upstream
+                "{}# Default passthrough: {}\n",
+                indent_str, loaded.defaults.tls_passthrough_upstream
             ));
-            result.push_str(
-                "    # -----------------------------------------------------------------\n",
-            );
+            result.push_str(&format!(
+                "{}# -----------------------------------------------------------------\n",
+                indent_str
+            ));
         }
 
         // Add comment before clusters section
@@ -134,6 +150,7 @@ fn add_section_comments(yaml: &str, loaded: &load::Loaded) -> String {
 
     result
 }
+
 
 pub fn cmd_validate(cli: &Cli) -> Result<()> {
     cmd_build(cli)?;

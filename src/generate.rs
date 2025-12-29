@@ -17,6 +17,7 @@ pub fn generate_envoy_yaml(loaded: &crate::load::Loaded) -> Result<Value> {
             &loaded.access_log,
             &loaded.domains,
             &loaded.policies,
+            &loaded.listeners,
         ),
     );
     static_resources.insert(s("clusters"), gen_clusters(&loaded.upstreams));
@@ -37,15 +38,24 @@ fn gen_listeners(
     log: &AccessLogSpec,
     domains: &[DomainSpec],
     policies: &PoliciesSpec,
+    listeners_spec: &ListenersSpec,
 ) -> Value {
     // :80 HTTP -> defaults.http_default_upstream
     // :443 TLS inspector + SNI split:
     // - terminate for domains with mode terminate_https_443
     // - default passthrough -> defaults.tls_passthrough_upstream
-    let listeners = vec![
+    let mut listeners = vec![
         Value::Mapping(gen_http_80_listener(defaults, log)),
         Value::Mapping(gen_https_443_sni_listener(defaults, log, domains, policies)),
     ];
+
+    for internal in &listeners_spec.internal_http_listeners {
+        listeners.push(Value::Mapping(gen_internal_http_listener(
+            defaults,
+            log,
+            internal,
+        )));
+    }
 
     Value::Sequence(listeners)
 }
@@ -68,8 +78,10 @@ fn gen_http_80_listener(defaults: &DefaultsSpec, log: &AccessLogSpec) -> Mapping
                 Some(defaults.route_timeout.clone()),
                 None,
             )],
+            None,
         ),
         vec![http_filter_router()],
+        None,
     );
 
     let filter_chain = filter_chain_http(hcm);
@@ -142,22 +154,40 @@ fn gen_https_443_sni_listener(
             format!("{}_vhost", sanitize_name(&d.domain)),
             vec![d.domain.as_str()],
             routes,
+            None,
         );
 
         // Filters:
         // - If any route references local_ratelimit policy, include local_ratelimit filter
+        // - Include any extra filters configured for this domain
         // - Always include router
         let mut http_filters = Vec::new();
         if any_route_uses_rl {
-            http_filters.push(http_filter_local_ratelimit_default());
+            let stat_prefix = d
+                .http_connection_manager
+                .as_ref()
+                .and_then(|hcm| hcm.local_ratelimit_stat_prefix.as_deref())
+                .unwrap_or("default_local_ratelimit");
+            http_filters.push(http_filter_local_ratelimit_default(stat_prefix));
+        }
+        if let Some(hcm) = d.http_connection_manager.as_ref() {
+            for filter in &hcm.extra_http_filters {
+                match filter {
+                    HttpFilterSpec::GrpcWeb => http_filters.push(http_filter_grpc_web()),
+                }
+            }
         }
         http_filters.push(http_filter_router());
 
-        let hcm = http_connection_manager(
+        let hcm = http_connection_manager_with_domain(
             &format!("{}_https", sanitize_name(&d.domain)),
             log,
             rc,
             http_filters,
+            d.http_connection_manager.as_ref(),
+            d.normalize_path,
+            d.merge_slashes,
+            d.aws_signing.as_ref(),
         );
 
         fc.insert(
@@ -193,17 +223,87 @@ fn gen_https_443_sni_listener(
     listener
 }
 
-fn route_from_spec(r: &RouteSpec, defaults: &DefaultsSpec, policies: &PoliciesSpec) -> Value {
-    let timeout = r.timeout.clone().or(Some(defaults.route_timeout.clone()));
+fn gen_internal_http_listener(
+    defaults: &DefaultsSpec,
+    log: &AccessLogSpec,
+    internal: &InternalHttpListenerSpec,
+) -> Mapping {
+    let mut listener = Mapping::new();
+    listener.insert(s("name"), s(&internal.name));
+    listener.insert(
+        s("address"),
+        socket_addr("TCP", &internal.address, internal.port),
+    );
 
+    let timeout = internal
+        .timeout
+        .clone()
+        .or(Some(defaults.route_timeout.clone()));
+    let routes = vec![route_prefix_to_cluster(
+        "/",
+        &internal.to_upstream,
+        timeout,
+        None,
+    )];
+
+    let rc = route_config_single_vhost(
+        format!("{}_route", internal.name),
+        format!("{}_vhost", internal.name),
+        internal.domains.iter().map(String::as_str).collect(),
+        routes,
+        Some(&internal.request_headers_to_add),
+    );
+
+    let hcm = http_connection_manager(
+        &internal.stat_prefix,
+        log,
+        rc,
+        vec![http_filter_router()],
+        None,
+    );
+
+    let filter_chain = filter_chain_http(hcm);
+    listener.insert(
+        s("filter_chains"),
+        Value::Sequence(vec![Value::Mapping(filter_chain)]),
+    );
+    listener
+}
+
+fn route_from_spec(r: &RouteSpec, defaults: &DefaultsSpec, policies: &PoliciesSpec) -> Value {
     let mut route = Mapping::new();
     route.insert(s("match"), match_to_value(&r.m));
 
-    // route action
+    // Check if this is a direct response route
+    if let Some(dr) = &r.direct_response {
+        let mut direct = Mapping::new();
+        direct.insert(s("status"), n(dr.status as u64));
+        if let Some(body) = &dr.body {
+            direct.insert(
+                s("body"),
+                Value::Mapping({
+                    let mut b = Mapping::new();
+                    b.insert(s("inline_string"), s(body));
+                    b
+                }),
+            );
+        }
+        route.insert(s("direct_response"), Value::Mapping(direct));
+        return Value::Mapping(route);
+    }
+
+    // Regular route action
+    let timeout = r.timeout.clone().or(Some(defaults.route_timeout.clone()));
+
     let mut route_action = Mapping::new();
-    route_action.insert(s("cluster"), s(&r.to_upstream));
+    if let Some(upstream) = &r.to_upstream {
+        route_action.insert(s("cluster"), s(upstream));
+    }
     if let Some(t) = timeout {
         route_action.insert(s("timeout"), s(t));
+    }
+    if let Some(rewrite) = &r.prefix_rewrite {
+        route_action.insert(s("prefix_rewrite"), s(rewrite));
     }
     route.insert(s("route"), Value::Mapping(route_action));
 
@@ -212,12 +312,17 @@ fn route_from_spec(r: &RouteSpec, defaults: &DefaultsSpec, policies: &PoliciesSp
         if let Some(key) = &pfc.local_ratelimit {
             let tb = policies.local_ratelimits.get(key).expect("validated");
             let mut typed = Mapping::new();
+            let stat_prefix = tb
+                .stat_prefix
+                .as_deref()
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("rl_{}", key));
             typed.insert(
                 s("envoy.filters.http.local_ratelimit"),
                 Value::Mapping({
                     let mut cfg = Mapping::new();
                     cfg.insert(s("@type"), s("type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit"));
-                    cfg.insert(s("stat_prefix"), s(format!("rl_{}", key)));
+                    cfg.insert(s("stat_prefix"), s(stat_prefix));
                     cfg.insert(s("token_bucket"), Value::Mapping({
                         let mut t = Mapping::new();
                         t.insert(s("max_tokens"), n(tb.max_tokens));
@@ -242,6 +347,24 @@ fn match_to_value(m: &MatchSpec) -> Value {
     } else if let Some(path) = &m.path {
         mm.insert(s("path"), s(path));
     }
+
+    // Add header matchers if present
+    if !m.headers.is_empty() {
+        let headers: Vec<Value> = m
+            .headers
+            .iter()
+            .map(|h| {
+                let mut hm = Mapping::new();
+                hm.insert(s("name"), s(&h.name));
+                if let Some(exact) = &h.exact_match {
+                    hm.insert(s("exact_match"), s(exact));
+                }
+                Value::Mapping(hm)
+            })
+            .collect();
+        mm.insert(s("headers"), Value::Sequence(headers));
+    }
+
     Value::Mapping(mm)
 }
 
@@ -306,15 +429,77 @@ fn http_connection_manager(
     log: &AccessLogSpec,
     route_config: Value,
     http_filters: Vec<Value>,
+    overrides: Option<&HttpConnectionManagerSpec>,
+) -> Value {
+    http_connection_manager_with_domain(stat_prefix, log, route_config, http_filters, overrides, None, None, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn http_connection_manager_with_domain(
+    stat_prefix: &str,
+    log: &AccessLogSpec,
+    route_config: Value,
+    http_filters: Vec<Value>,
+    overrides: Option<&HttpConnectionManagerSpec>,
+    domain_normalize_path: Option<bool>,
+    domain_merge_slashes: Option<bool>,
+    aws_signing: Option<&AwsSigningSpec>,
 ) -> Value {
     let mut hcm = Mapping::new();
+    let stat_prefix = overrides
+        .and_then(|o| o.stat_prefix.as_deref())
+        .unwrap_or(stat_prefix);
     hcm.insert(s("@type"), s("type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager"));
     hcm.insert(s("stat_prefix"), s(stat_prefix));
-    hcm.insert(s("normalize_path"), b(true));
-    hcm.insert(s("merge_slashes"), b(true));
+
+    // normalize_path: domain-level takes precedence, then HCM override, then default true
+    let normalize = domain_normalize_path
+        .or_else(|| overrides.and_then(|o| o.normalize_path))
+        .unwrap_or(true);
+    hcm.insert(s("normalize_path"), b(normalize));
+
+    // merge_slashes: domain-level takes precedence, then HCM override, then default true
+    let merge = domain_merge_slashes
+        .or_else(|| overrides.and_then(|o| o.merge_slashes))
+        .unwrap_or(true);
+    hcm.insert(s("merge_slashes"), b(merge));
+
+    if let Some(use_remote_address) = overrides.and_then(|o| o.use_remote_address) {
+        hcm.insert(s("use_remote_address"), b(use_remote_address));
+    }
+    if let Some(xff_num_trusted_hops) = overrides.and_then(|o| o.xff_num_trusted_hops) {
+        hcm.insert(s("xff_num_trusted_hops"), n(xff_num_trusted_hops));
+    }
+    if let Some(stream_idle_timeout) = overrides.and_then(|o| o.stream_idle_timeout.as_deref())
+    {
+        hcm.insert(s("stream_idle_timeout"), s(stream_idle_timeout));
+    }
     hcm.insert(s("access_log"), stdout_access_log(log));
     hcm.insert(s("route_config"), route_config);
-    hcm.insert(s("http_filters"), Value::Sequence(http_filters));
+
+    // If AWS signing is enabled, we need to use upstream_http_filters in the router
+    if let Some(signing) = aws_signing {
+        if signing.enabled {
+            // Build http_filters with upstream signing in the router
+            let mut final_filters = Vec::new();
+            for filter in http_filters {
+                // Check if this is the router filter and add upstream signing
+                if let Value::Mapping(ref m) = filter {
+                    if m.get(Value::String("name".to_string())) == Some(&Value::String("envoy.filters.http.router".to_string())) {
+                        final_filters.push(http_filter_router_with_aws_signing(signing));
+                        continue;
+                    }
+                }
+                final_filters.push(filter);
+            }
+            hcm.insert(s("http_filters"), Value::Sequence(final_filters));
+        } else {
+            hcm.insert(s("http_filters"), Value::Sequence(http_filters));
+        }
+    } else {
+        hcm.insert(s("http_filters"), Value::Sequence(http_filters));
+    }
+
     Value::Mapping(hcm)
 }
 
@@ -323,6 +508,7 @@ fn route_config_single_vhost(
     vhost_name: impl Into<String>,
     domains: Vec<&str>,
     routes: Vec<Value>,
+    request_headers_to_add: Option<&[HeaderValueOption]>,
 ) -> Value {
     let mut rc = Mapping::new();
     rc.insert(s("name"), s(name.into()));
@@ -335,6 +521,14 @@ fn route_config_single_vhost(
                 s("domains"),
                 Value::Sequence(domains.into_iter().map(s).collect()),
             );
+            if let Some(headers) = request_headers_to_add {
+                if !headers.is_empty() {
+                    vh.insert(
+                        s("request_headers_to_add"),
+                        Value::Sequence(headers.iter().map(header_value_option).collect()),
+                    );
+                }
+            }
             vh.insert(s("routes"), Value::Sequence(routes));
             vh
         })]),
@@ -392,17 +586,133 @@ fn http_filter_router() -> Value {
     })
 }
 
-fn http_filter_local_ratelimit_default() -> Value {
+/// Router filter with AWS request signing in upstream_http_filters
+/// This is used for S3-compatible backends where Envoy signs requests on behalf of anonymous clients
+fn http_filter_router_with_aws_signing(signing: &AwsSigningSpec) -> Value {
+    Value::Mapping({
+        let mut f = Mapping::new();
+        f.insert(s("name"), s("envoy.filters.http.router"));
+        f.insert(
+            s("typed_config"),
+            Value::Mapping({
+                let mut tc = Mapping::new();
+                tc.insert(
+                    s("@type"),
+                    s("type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"),
+                );
+                // upstream_http_filters: signing happens after Envoy finalizes the request
+                tc.insert(
+                    s("upstream_http_filters"),
+                    Value::Sequence(vec![
+                        // AWS Request Signing filter
+                        Value::Mapping({
+                            let mut sf = Mapping::new();
+                            sf.insert(s("name"), s("envoy.filters.http.aws_request_signing"));
+                            sf.insert(
+                                s("typed_config"),
+                                Value::Mapping({
+                                    let mut stc = Mapping::new();
+                                    stc.insert(
+                                        s("@type"),
+                                        s("type.googleapis.com/envoy.extensions.filters.http.aws_request_signing.v3.AwsRequestSigning"),
+                                    );
+                                    stc.insert(s("service_name"), s(&signing.service_name));
+                                    stc.insert(s("region"), s(&signing.region));
+                                    stc.insert(s("use_unsigned_payload"), b(signing.use_unsigned_payload));
+
+                                    // Add credential_provider to use only environment variables
+                                    // This prevents Envoy from trying IMDS/instance profile
+                                    if signing.use_env_credentials {
+                                        stc.insert(
+                                            s("credential_provider"),
+                                            Value::Mapping({
+                                                let mut cp = Mapping::new();
+                                                cp.insert(s("custom_credential_provider_chain"), b(true));
+                                                cp.insert(s("environment_credential_provider"), Value::Mapping(Mapping::new()));
+                                                cp
+                                            }),
+                                        );
+                                    }
+                                    stc
+                                }),
+                            );
+                            sf
+                        }),
+                        // Upstream codec filter (required after signing)
+                        Value::Mapping({
+                            let mut uf = Mapping::new();
+                            uf.insert(s("name"), s("envoy.filters.http.upstream_codec"));
+                            uf.insert(
+                                s("typed_config"),
+                                Value::Mapping({
+                                    let mut utc = Mapping::new();
+                                    utc.insert(
+                                        s("@type"),
+                                        s("type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec"),
+                                    );
+                                    utc
+                                }),
+                            );
+                            uf
+                        }),
+                    ]),
+                );
+                tc
+            }),
+        );
+        f
+    })
+}
+
+fn http_filter_local_ratelimit_default(stat_prefix: &str) -> Value {
     Value::Mapping({
         let mut f = Mapping::new();
         f.insert(s("name"), s("envoy.filters.http.local_ratelimit"));
         f.insert(s("typed_config"), Value::Mapping({
             let mut tc = Mapping::new();
             tc.insert(s("@type"), s("type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit"));
-            tc.insert(s("stat_prefix"), s("default_local_ratelimit"));
+            tc.insert(s("stat_prefix"), s(stat_prefix));
             tc
         }));
         f
+    })
+}
+
+fn http_filter_grpc_web() -> Value {
+    Value::Mapping({
+        let mut f = Mapping::new();
+        f.insert(s("name"), s("envoy.filters.http.grpc_web"));
+        f.insert(
+            s("typed_config"),
+            Value::Mapping({
+                let mut tc = Mapping::new();
+                tc.insert(
+                    s("@type"),
+                    s("type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb"),
+                );
+                tc
+            }),
+        );
+        f
+    })
+}
+
+fn header_value_option(h: &HeaderValueOption) -> Value {
+    Value::Mapping({
+        let mut m = Mapping::new();
+        m.insert(
+            s("header"),
+            Value::Mapping({
+                let mut hv = Mapping::new();
+                hv.insert(s("key"), s(&h.header.key));
+                hv.insert(s("value"), s(&h.header.value));
+                hv
+            }),
+        );
+        if let Some(append_action) = &h.append_action {
+            m.insert(s("append_action"), s(append_action));
+        }
+        m
     })
 }
 
@@ -593,6 +903,7 @@ mod tests {
                 bin: "envoy".to_string(),
                 config_path: "/etc/envoy/envoy.yaml".to_string(),
             },
+            listeners: ListenersSpec::default(),
             domains: vec![],
             upstreams: vec![
                 UpstreamSpec {
@@ -659,6 +970,7 @@ mod tests {
                 bin: "envoy".to_string(),
                 config_path: "/etc/envoy/envoy.yaml".to_string(),
             },
+            listeners: ListenersSpec::default(),
             domains: vec![DomainSpec {
                 domain: "example.com".to_string(),
                 mode: "terminate_https_443".to_string(),
@@ -670,11 +982,18 @@ mod tests {
                     m: MatchSpec {
                         prefix: Some("/api".to_string()),
                         path: None,
+                        headers: vec![],
                     },
-                    to_upstream: "api_backend".to_string(),
+                    to_upstream: Some("api_backend".to_string()),
                     timeout: Some("30s".to_string()),
                     per_filter_config: None,
+                    prefix_rewrite: None,
+                    direct_response: None,
                 }],
+                http_connection_manager: None,
+                normalize_path: None,
+                merge_slashes: None,
+                aws_signing: None,
             }],
             upstreams: vec![
                 UpstreamSpec {
@@ -748,6 +1067,7 @@ mod tests {
         let prefix_match = MatchSpec {
             prefix: Some("/api".to_string()),
             path: None,
+            headers: vec![],
         };
         let result = match_to_value(&prefix_match);
         match &result {
@@ -764,6 +1084,7 @@ mod tests {
         let path_match = MatchSpec {
             prefix: None,
             path: Some("/exact/path".to_string()),
+            headers: vec![],
         };
         let result = match_to_value(&path_match);
         match &result {

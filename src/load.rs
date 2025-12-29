@@ -11,6 +11,7 @@ pub struct Loaded {
     pub defaults: DefaultsSpec,
     pub access_log: AccessLogSpec,
     pub validate: ValidateSpec,
+    pub listeners: ListenersSpec,
     pub domains: Vec<DomainSpec>,
     pub upstreams: Vec<UpstreamSpec>,
     pub policies: PoliciesSpec,
@@ -22,6 +23,8 @@ pub fn load_all(config_dir: &Path) -> Result<Loaded> {
     let access_log: AccessLogSpec = read_yaml(config_dir.join("common/access_log.yaml"))?;
     let runtime: RuntimeSpec = read_yaml(config_dir.join("common/runtime.yaml"))?;
     let policies: PoliciesSpec = read_yaml(config_dir.join("policies/ratelimits.yaml"))?;
+    let listeners: ListenersSpec =
+        read_yaml_optional(config_dir.join("common/listeners.yaml"))?;
 
     let domains = read_dir_yaml::<DomainSpec>(&config_dir.join("domains"))?;
 
@@ -36,10 +39,18 @@ pub fn load_all(config_dir: &Path) -> Result<Loaded> {
         defaults,
         access_log,
         validate: runtime.validate, // Extract validate from runtime
+        listeners,
         domains,
         upstreams,
         policies,
     })
+}
+
+fn read_yaml_optional<T: serde::de::DeserializeOwned + Default>(path: PathBuf) -> Result<T> {
+    if !path.exists() {
+        return Ok(T::default());
+    }
+    read_yaml(path)
 }
 
 fn read_yaml<T: serde::de::DeserializeOwned>(path: PathBuf) -> Result<T> {

@@ -48,12 +48,15 @@ pub fn validate_model(
 
     for d in domains {
         for r in &d.routes {
-            if !upstream_map.contains_key(r.to_upstream.as_str()) {
-                bail!(
-                    "domain {} route references unknown upstream {}",
-                    d.domain,
-                    r.to_upstream
-                );
+            // Only validate upstream reference if this is not a direct_response route
+            if let Some(upstream) = &r.to_upstream {
+                if !upstream_map.contains_key(upstream.as_str()) {
+                    bail!(
+                        "domain {} route references unknown upstream {}",
+                        d.domain,
+                        upstream
+                    );
+                }
             }
             if let Some(pfc) = &r.per_filter_config {
                 if let Some(key) = &pfc.local_ratelimit {
@@ -89,11 +92,18 @@ mod tests {
                 m: MatchSpec {
                     prefix: Some("/api".to_string()),
                     path: None,
+                    headers: vec![],
                 },
-                to_upstream: "api_backend".to_string(),
+                to_upstream: Some("api_backend".to_string()),
                 timeout: Some("30s".to_string()),
                 per_filter_config: None,
+                prefix_rewrite: None,
+                direct_response: None,
             }],
+            http_connection_manager: None,
+            normalize_path: None,
+            merge_slashes: None,
+            aws_signing: None,
         }];
 
         let upstreams = vec![
@@ -157,6 +167,10 @@ mod tests {
                     private_key: "/path/to/key".to_string(),
                 }),
                 routes: vec![],
+                http_connection_manager: None,
+                normalize_path: None,
+                merge_slashes: None,
+                aws_signing: None,
             },
             DomainSpec {
                 domain: "example.com".to_string(), // duplicate
@@ -166,6 +180,10 @@ mod tests {
                     private_key: "/path/to/key2".to_string(),
                 }),
                 routes: vec![],
+                http_connection_manager: None,
+                normalize_path: None,
+                merge_slashes: None,
+                aws_signing: None,
             },
         ];
 
@@ -216,6 +234,10 @@ mod tests {
             mode: "terminate_https_443".to_string(), // requires TLS
             tls: None,                               // but no TLS provided
             routes: vec![],
+            http_connection_manager: None,
+            normalize_path: None,
+            merge_slashes: None,
+            aws_signing: None,
         }];
 
         let upstreams = vec![
@@ -268,6 +290,10 @@ mod tests {
             mode: "unsupported_mode".to_string(), // not supported
             tls: None,
             routes: vec![],
+            http_connection_manager: None,
+            normalize_path: None,
+            merge_slashes: None,
+            aws_signing: None,
         }];
 
         let upstreams = vec![
@@ -413,11 +439,18 @@ mod tests {
                 m: MatchSpec {
                     prefix: Some("/api".to_string()),
                     path: None,
+                    headers: vec![],
                 },
-                to_upstream: "unknown_backend".to_string(), // doesn't exist
+                to_upstream: Some("unknown_backend".to_string()), // doesn't exist
                 timeout: Some("30s".to_string()),
                 per_filter_config: None,
+                prefix_rewrite: None,
+                direct_response: None,
             }],
+            http_connection_manager: None,
+            normalize_path: None,
+            merge_slashes: None,
+            aws_signing: None,
         }];
 
         let upstreams = vec![
@@ -476,13 +509,20 @@ mod tests {
                 m: MatchSpec {
                     prefix: Some("/api".to_string()),
                     path: None,
+                    headers: vec![],
                 },
-                to_upstream: "api_backend".to_string(),
+                to_upstream: Some("api_backend".to_string()),
                 timeout: Some("30s".to_string()),
                 per_filter_config: Some(PerFilterConfigRef {
                     local_ratelimit: Some("unknown_policy".to_string()), // doesn't exist
                 }),
+                prefix_rewrite: None,
+                direct_response: None,
             }],
+            http_connection_manager: None,
+            normalize_path: None,
+            merge_slashes: None,
+            aws_signing: None,
         }];
 
         let upstreams = vec![
