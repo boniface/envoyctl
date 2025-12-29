@@ -51,9 +51,7 @@ fn gen_listeners(
 
     for internal in &listeners_spec.internal_http_listeners {
         listeners.push(Value::Mapping(gen_internal_http_listener(
-            defaults,
-            log,
-            internal,
+            defaults, log, internal,
         )));
     }
 
@@ -431,7 +429,16 @@ fn http_connection_manager(
     http_filters: Vec<Value>,
     overrides: Option<&HttpConnectionManagerSpec>,
 ) -> Value {
-    http_connection_manager_with_domain(stat_prefix, log, route_config, http_filters, overrides, None, None, None)
+    http_connection_manager_with_domain(
+        stat_prefix,
+        log,
+        route_config,
+        http_filters,
+        overrides,
+        None,
+        None,
+        None,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -470,8 +477,7 @@ fn http_connection_manager_with_domain(
     if let Some(xff_num_trusted_hops) = overrides.and_then(|o| o.xff_num_trusted_hops) {
         hcm.insert(s("xff_num_trusted_hops"), n(xff_num_trusted_hops));
     }
-    if let Some(stream_idle_timeout) = overrides.and_then(|o| o.stream_idle_timeout.as_deref())
-    {
+    if let Some(stream_idle_timeout) = overrides.and_then(|o| o.stream_idle_timeout.as_deref()) {
         hcm.insert(s("stream_idle_timeout"), s(stream_idle_timeout));
     }
     hcm.insert(s("access_log"), stdout_access_log(log));
@@ -485,7 +491,9 @@ fn http_connection_manager_with_domain(
             for filter in http_filters {
                 // Check if this is the router filter and add upstream signing
                 if let Value::Mapping(ref m) = filter {
-                    if m.get(Value::String("name".to_string())) == Some(&Value::String("envoy.filters.http.router".to_string())) {
+                    if m.get(Value::String("name".to_string()))
+                        == Some(&Value::String("envoy.filters.http.router".to_string()))
+                    {
                         final_filters.push(http_filter_router_with_aws_signing(signing));
                         continue;
                     }

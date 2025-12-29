@@ -23,8 +23,7 @@ pub fn load_all(config_dir: &Path) -> Result<Loaded> {
     let access_log: AccessLogSpec = read_yaml(config_dir.join("common/access_log.yaml"))?;
     let runtime: RuntimeSpec = read_yaml(config_dir.join("common/runtime.yaml"))?;
     let policies: PoliciesSpec = read_yaml(config_dir.join("policies/ratelimits.yaml"))?;
-    let listeners: ListenersSpec =
-        read_yaml_optional(config_dir.join("common/listeners.yaml"))?;
+    let listeners: ListenersSpec = read_yaml_optional(config_dir.join("common/listeners.yaml"))?;
 
     let domains = read_dir_yaml::<DomainSpec>(&config_dir.join("domains"))?;
 

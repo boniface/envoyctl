@@ -74,9 +74,9 @@ fn add_section_comments(yaml: &str, loaded: &load::Loaded) -> String {
 
         // Add comment before HTTP listener
         if line.trim_start() == "- name: http_listener" {
-            result.push_str(
-                &format!("{indent_str}# -----------------------------------------------------------------\n"),
-            );
+            result.push_str(&format!(
+                "{indent_str}# -----------------------------------------------------------------\n"
+            ));
             result.push_str(&format!("{indent_str}# HTTP Listener (Port 80)\n"));
             result.push_str(&format!(
                 "{}# Default upstream: {}\n",
@@ -94,10 +94,7 @@ fn add_section_comments(yaml: &str, loaded: &load::Loaded) -> String {
                 "\n{}# -----------------------------------------------------------------\n",
                 indent_str
             ));
-            result.push_str(&format!(
-                "{}# HTTPS SNI Listener (Port 443)\n",
-                indent_str
-            ));
+            result.push_str(&format!("{}# HTTPS SNI Listener (Port 443)\n", indent_str));
             result.push_str(&format!(
                 "{}# TLS termination for configured domains, passthrough for others\n",
                 indent_str
@@ -150,7 +147,6 @@ fn add_section_comments(yaml: &str, loaded: &load::Loaded) -> String {
 
     result
 }
-
 
 pub fn cmd_validate(cli: &Cli) -> Result<()> {
     cmd_build(cli)?;

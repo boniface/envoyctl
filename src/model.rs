@@ -234,7 +234,7 @@ fn default_unsigned_payload() -> bool {
     true
 }
 fn default_use_env_credentials() -> bool {
-    true  // Default to true since most non-AWS deployments need this
+    true // Default to true since most non-AWS deployments need this
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -431,7 +431,10 @@ routes:
         assert_eq!(domain.mode, "terminate_https_443");
         assert!(domain.tls.is_some());
         assert_eq!(domain.routes.len(), 1);
-        assert_eq!(domain.routes[0].to_upstream, Some("api_backend".to_string()));
+        assert_eq!(
+            domain.routes[0].to_upstream,
+            Some("api_backend".to_string())
+        );
         assert_eq!(domain.routes[0].timeout, Some("30s".to_string()));
     }
 
