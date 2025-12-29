@@ -31,18 +31,45 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.event.inputs.version }}"
-          echo "Downloading .deb from release $TAG..."
+          INPUT_TAG="${{ github.event.inputs.version }}"
           
-          # Download the .deb file from the GitHub release
+          # Normalize tag: add 'v' prefix if missing
+          if [[ "$INPUT_TAG" == v* ]]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="v$INPUT_TAG"
+          fi
+          
+          echo "Looking for release: $TAG"
+          
+          # Check if release exists
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "ERROR: Release '$TAG' not found!"
+            echo ""
+            echo "Available releases:"
+            gh release list --limit 10
+            echo ""
+            echo "Please ensure:"
+            echo "  1. You've pushed a tag (git tag $TAG && git push --tags)"
+            echo "  2. The CI build has completed and created the release"
+            echo "  3. The version format is correct (e.g., v0.0.4 or 0.0.4)"
+            exit 1
+          fi
+          
+          echo "Downloading .deb from release $TAG..."
           gh release download "$TAG" --pattern "*.deb" --dir .
           
           DEB=$(find . -name '*.deb' -print -quit)
           if [ -z "$DEB" ]; then
             echo "ERROR: No .deb file found in release $TAG"
+            echo "Release assets:"
+            gh release view "$TAG" --json assets -q '.assets[].name'
             exit 1
           fi
           echo "Downloaded: $DEB"
+          
+          # Export TAG for later steps
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: |
@@ -67,14 +94,14 @@ jobs:
           echo "GPG public key exported successfully"
 
       - name: Prepare APT repository
-        env:
-          RELEASE_TAG: ${{ github.event.inputs.version }}
         run: |
           DEB=$(find . -name '*.deb' -print -quit)
           if [ ! -f "$DEB" ]; then
             echo "No .deb file found, aborting."
             exit 1
           fi
+          
+          echo "Using release tag: $RELEASE_TAG"
           
           mkdir -p apt-repo/pool/main/e/envoyctl \
                    apt-repo/dists/stable/main/binary-amd64

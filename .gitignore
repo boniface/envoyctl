@@ -1,11 +1,12 @@
 /target
+
+# Test files (local testing only, not needed in repo)
 /tests/certs/
+/tests/out/
+/tests/mock-backends/
 /tests/README.md
 /tests/integration-test.sh
 /tests/generate-test-certs.sh
 /tests/envoy.yaml
 /tests/docker-compose.yml
-/tests/out/
-/tests/mock-backends/
 /tests/config/
-
